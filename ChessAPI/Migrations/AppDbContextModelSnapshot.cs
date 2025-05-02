@@ -30,19 +30,19 @@ namespace ChessAPI.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
-                    b.Property<int>("BlackUserId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("MatchStatusEnum")
+                    b.Property<int?>("BlackUserId")
                         .HasColumnType("integer");
 
                     b.Property<int>("SecondsDuration")
                         .HasColumnType("integer");
 
-                    b.Property<DateTime>("StartedAt")
+                    b.Property<DateTime?>("StartedAt")
                         .HasColumnType("timestamp with time zone");
 
-                    b.Property<int>("WhiteUserId")
+                    b.Property<int>("Status")
+                        .HasColumnType("integer");
+
+                    b.Property<int?>("WhiteUserId")
                         .HasColumnType("integer");
 
                     b.HasKey("Id");
@@ -68,6 +68,9 @@ namespace ChessAPI.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("Username")
+                        .IsUnique();
+
                     b.ToTable("Users");
                 });
 
@@ -75,15 +78,11 @@ namespace ChessAPI.Migrations
                 {
                     b.HasOne("ChessAPI.Models.User", "BlackUser")
                         .WithMany()
-                        .HasForeignKey("BlackUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("BlackUserId");
 
                     b.HasOne("ChessAPI.Models.User", "WhiteUser")
                         .WithMany()
-                        .HasForeignKey("WhiteUserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .HasForeignKey("WhiteUserId");
 
                     b.Navigation("BlackUser");
 
