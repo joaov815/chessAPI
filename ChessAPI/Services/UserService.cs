@@ -5,16 +5,39 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ChessAPI.Services;
 
-public class UserService(AppDbContext context)
+public class UserService
 {
-    protected readonly DbSet<User> _dbSet = context.Set<User>();
+    protected readonly DbSet<User> _dbSet;
+    public AppDbContext Context { get; set; }
+    public IQueryable<User> QueryBuilder { get; set; }
 
-    public async Task CreateAsync(CreateUserDto dto)
+    public UserService(AppDbContext context)
     {
-        User user = new() { Username = dto.Username };
+        Context = context;
+        _dbSet = context.Set<User>();
+        QueryBuilder = _dbSet.AsQueryable();
+    }
+
+    public async Task<User> CreateAsync(CreateUserDto dto)
+    {
+        User? user = await GetByUsername(dto.Username);
+
+        if (user is not null)
+        {
+            return user;
+        }
+
+        user = new() { Username = dto.Username };
 
         _dbSet.Add(user);
 
-        await context.SaveChangesAsync();
+        await Context.SaveChangesAsync();
+
+        return user;
+    }
+
+    public async Task<User?> GetByUsername(string username)
+    {
+        return await QueryBuilder.FirstOrDefaultAsync(u => u.Username == username);
     }
 }

@@ -1,4 +1,5 @@
 using ChessAPI.Data;
+using ChessAPI.Service;
 using ChessAPI.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,12 +15,15 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 );
 
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<MatchService>();
+builder.Services.AddSingleton<WebSocketConnectionManager>();
 
 builder.Services.AddControllers();
 
 var app = builder.Build();
 
 app.MapControllers();
+app.UseWebSockets();
 
 // Configure the HTTP request pipeline.
 if (app.Environment.IsDevelopment())
