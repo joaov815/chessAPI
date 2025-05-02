@@ -1,5 +1,4 @@
 using ChessAPI.Data;
-using ChessAPI.Service;
 using ChessAPI.Services;
 using Microsoft.EntityFrameworkCore;
 
