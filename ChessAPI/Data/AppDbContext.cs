@@ -7,6 +7,7 @@ public class AppDbContext(IConfiguration _configuration) : DbContext
 {
     public DbSet<User> Users { get; set; }
     public DbSet<Match> Matches { get; set; }
+    public DbSet<Piece> Pieces { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {

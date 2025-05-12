@@ -3,6 +3,7 @@ using System;
 using ChessAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ChessAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250512215433_MatchAndUserChanges2")]
+    partial class MatchAndUserChanges2
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -57,39 +60,6 @@ namespace ChessAPI.Migrations
                     b.ToTable("Matches");
                 });
 
-            modelBuilder.Entity("ChessAPI.Models.Piece", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("Color")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Column")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("MatchId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Row")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Value")
-                        .HasColumnType("integer");
-
-                    b.Property<bool>("WasCaptured")
-                        .HasColumnType("boolean");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MatchId");
-
-                    b.ToTable("Pieces");
-                });
-
             modelBuilder.Entity("ChessAPI.Models.User", b =>
                 {
                     b.Property<int>("Id")
@@ -123,17 +93,6 @@ namespace ChessAPI.Migrations
                     b.Navigation("BlackUser");
 
                     b.Navigation("WhiteUser");
-                });
-
-            modelBuilder.Entity("ChessAPI.Models.Piece", b =>
-                {
-                    b.HasOne("ChessAPI.Models.Match", "Match")
-                        .WithMany()
-                        .HasForeignKey("MatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Match");
                 });
 #pragma warning restore 612, 618
         }

@@ -9,6 +9,7 @@ public class Match
     public int Id { get; set; }
     public DateTime? StartedAt { get; set; }
     public required ushort SecondsDuration { get; set; }
+    public required ushort Rounds { get; set; }
     public User? WhiteUser { get; set; }
     public User? BlackUser { get; set; }
     public required MatchStatusEnum Status { get; set; }

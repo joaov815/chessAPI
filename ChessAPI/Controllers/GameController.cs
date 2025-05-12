@@ -10,13 +10,36 @@ namespace ChessAPI.Controllers;
 
 [ApiController]
 [Route("/ws")]
-public sealed class GameController(
-    WebSocketConnectionManager manager,
-    MatchService matchService,
-    UserService userService
-) : ControllerBase
+public sealed class GameController : ControllerBase
 {
-    private readonly WebSocketConnectionManager _manager = manager;
+    public GameController(
+        WebSocketConnectionManager manager,
+        MatchService matchService,
+        UserService userService
+    )
+    {
+        _manager = manager;
+        _matchService = matchService;
+        _userService = userService;
+
+        _ = CheckClients();
+    }
+
+    private readonly WebSocketConnectionManager _manager;
+    private readonly MatchService _matchService;
+    private readonly UserService _userService;
+
+    private async Task CheckClients()
+    {
+        while (true)
+        {
+            Console.WriteLine("-------->");
+            Console.WriteLine("HeathCheck");
+
+            await _manager.HealthCheckAllAsync();
+            await Task.Delay(200);
+        }
+    }
 
     [HttpGet]
     public async Task<IActionResult> Connect()
@@ -51,6 +74,7 @@ public sealed class GameController(
                     "Closed by client",
                     CancellationToken.None
                 );
+
                 break;
             }
 
@@ -67,19 +91,19 @@ public sealed class GameController(
             if (dto.Type == "matchMaking")
             {
                 User user =
-                    await userService.CreateAsync(new() { Username = dto.Username })
+                    await _userService.CreateAsync(new() { Username = dto.Username })
                     ?? throw new InvalidOperationException("User not found");
 
                 _manager.AddClient(webSocket, user);
 
-                await matchService.OnUserConnected(user);
+                await _matchService.OnUserConnected(user);
 
                 Console.WriteLine($"{user.Username} no matchmaking....");
             }
 
             var responseJson = JsonSerializer.Serialize(message, jsonOptions);
 
-            var response = Encoding.UTF8.GetBytes("Echo: " + responseJson);
+            var response = Encoding.UTF8.GetBytes(responseJson);
 
             await webSocket.SendAsync(
                 new ArraySegment<byte>(response),
