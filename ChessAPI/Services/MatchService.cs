@@ -18,6 +18,7 @@ public class MatchService
     {
         Context = context;
         _dbSet = context.Set<Match>();
+        _piecesDbSet = context.Set<Piece>();
         QueryBuilder = _dbSet.AsQueryable();
 
         _userService = userService;
@@ -27,6 +28,7 @@ public class MatchService
     private readonly WebSocketConnectionManager _manager;
 
     protected readonly DbSet<Match> _dbSet;
+    protected readonly DbSet<Piece> _piecesDbSet;
     public AppDbContext Context { get; set; }
     public IQueryable<Match> QueryBuilder { get; set; }
 
@@ -91,14 +93,15 @@ public class MatchService
         for (int i = 0; i < 16; i++)
         {
             bool isWhite = i < 8;
+            int column = i < 8 ? i : i - 8;
 
             pieces.Add(
                 new()
                 {
                     Value = PieceEnum.PAWN,
                     Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
-                    Column = (ColumnEnum)i,
-                    Row = isWhite ? RowEnum.TWO : RowEnum.SEVEN,
+                    Column = column,
+                    Row = isWhite ? 1 : 7,
                     WasCaptured = false,
                     Match = match,
                 }
@@ -117,8 +120,8 @@ public class MatchService
                     new()
                     {
                         Value = piecesValues[j],
-                        Column = (ColumnEnum)(i % 2 == 0 ? j : (7 - j)),
-                        Row = isWhite ? RowEnum.ONE : RowEnum.EIGHT,
+                        Column = i % 2 == 0 ? j : (7 - j),
+                        Row = isWhite ? 0 : 8,
                         Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
                         WasCaptured = false,
                         Match = match,
@@ -130,19 +133,22 @@ public class MatchService
         for (int i = 0; i < 4; i++)
         {
             bool isWhite = i < 2;
+            bool isEven = i % 2 == 0;
 
             pieces.Add(
                 new()
                 {
-                    Value = isWhite ? PieceEnum.QUEEN : PieceEnum.KING,
+                    Value = isEven ? PieceEnum.QUEEN : PieceEnum.KING,
                     Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
-                    Column = (ColumnEnum)(isWhite ? 3 : 4),
-                    Row = isWhite ? RowEnum.ONE : RowEnum.EIGHT,
+                    Column = isEven ? 3 : 4,
+                    Row = isWhite ? 0 : 8,
                     WasCaptured = false,
                     Match = match,
                 }
             );
         }
+
+        _piecesDbSet.AddRange(pieces);
 
         return pieces;
     }
@@ -152,6 +158,8 @@ public class MatchService
         match.SetSecondPlayer(user);
         match.StartedAt = DateTime.UtcNow;
         match.Status = MatchStatusEnum.ONGOING;
+
+        SetInitialBoard(match);
 
         await Context.SaveChangesAsync();
 
@@ -177,10 +185,11 @@ public class MatchService
             .Include(_ => _.WhiteUser)
             .FirstOrDefaultAsync(m =>
                 m.Status == MatchStatusEnum.ONGOING
-                && (
-                    (m.BlackUser != null && m.BlackUser.Id == user.Id)
-                    || (m.WhiteUser != null && m.WhiteUser.Id == user.Id)
-                )
+                || m.Status == MatchStatusEnum.MATCHMAKING
+                    && (
+                        (m.BlackUser != null && m.BlackUser.Id == user.Id)
+                        || (m.WhiteUser != null && m.WhiteUser.Id == user.Id)
+                    )
             );
     }
 
