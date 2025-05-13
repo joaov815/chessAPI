@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using ChessAPI.Dtos;
+using ChessAPI.Enums;
 using ChessAPI.Models;
 using ChessAPI.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -33,8 +34,8 @@ public sealed class GameController : ControllerBase
     {
         while (true)
         {
-            Console.WriteLine("-------->");
-            Console.WriteLine("HeathCheck");
+            // Console.WriteLine("-------->");
+            // Console.WriteLine("HeathCheck");
 
             await _manager.HealthCheckAllAsync();
             await Task.Delay(200);
@@ -59,6 +60,7 @@ public sealed class GameController : ControllerBase
     private async Task Listen(WebSocket webSocket)
     {
         var buffer = new byte[1024 * 4];
+        User? user = null;
 
         while (webSocket.State == WebSocketState.Open)
         {
@@ -85,24 +87,31 @@ public sealed class GameController : ControllerBase
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
             };
 
-            WsMessageDto dto = JsonSerializer.Deserialize<WsMessageDto>(message, jsonOptions)!;
+            var dto = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(
+                message,
+                jsonOptions
+            )!;
 
-            // Separar
-            if (dto.Type == "matchMaking")
+            // Endpoints
+            if (dto.TryGetValue("type", out JsonElement value))
             {
-                User user =
-                    await _userService.CreateAsync(new() { Username = dto.Username })
-                    ?? throw new InvalidOperationException("User not found");
-
-                _manager.AddClient(webSocket, user);
-
-                await _matchService.OnUserConnected(user);
-
-                Console.WriteLine($"{user.Username} no matchmaking....");
+                if (value.GetInt32() == (int)WsMessageTypeEnum.MATCHMAKING)
+                {
+                    user = await _matchService.OnMatchMaking(
+                        webSocket,
+                        JsonSerializer.Deserialize<WsMessageDto>(message, jsonOptions)!
+                    );
+                }
+                else if (value.GetInt32() == (int)WsMessageTypeEnum.MOVE && user != null)
+                {
+                    await _matchService.OnMove(
+                        user,
+                        JsonSerializer.Deserialize<WsMovePieceDto>(message, jsonOptions)!
+                    );
+                }
             }
 
             var responseJson = JsonSerializer.Serialize(message, jsonOptions);
-
             var response = Encoding.UTF8.GetBytes(responseJson);
 
             await webSocket.SendAsync(
