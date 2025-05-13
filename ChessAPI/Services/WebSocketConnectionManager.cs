@@ -8,18 +8,14 @@ namespace ChessAPI.Services;
 
 public sealed class WebSocketConnectionManager
 {
-    private readonly ConcurrentDictionary<string, WsClient> _clients = new();
+    private readonly ConcurrentDictionary<int, WsClient> _clients = new();
 
-    public string AddClient(WebSocket socket, User user)
+    public void AddClient(WebSocket socket, User user)
     {
-        var id = Guid.NewGuid().ToString();
-
-        _clients.TryAdd(id, new() { Socket = socket, User = user });
-
-        return id;
+        _clients.TryAdd(user.Id, new() { Socket = socket, User = user });
     }
 
-    public WsClient? GetClient(string id)
+    public WsClient? GetClient(int id)
     {
         _clients.TryGetValue(id, out var client);
 
@@ -30,7 +26,10 @@ public sealed class WebSocketConnectionManager
 
     public async Task HealthCheckAllAsync()
     {
-        List<string> deadSockets = [];
+        Console.WriteLine("----HealthCheckAllAsync-----");
+        Console.WriteLine($"qtd: {_clients.Count}");
+
+        List<int> deadSockets = [];
 
         foreach (var clientKvp in _clients)
         {

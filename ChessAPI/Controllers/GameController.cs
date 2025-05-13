@@ -60,7 +60,7 @@ public sealed class GameController : ControllerBase
     private async Task Listen(WebSocket webSocket)
     {
         var buffer = new byte[1024 * 4];
-        User? user = null;
+        MatchMakingResponseDto? matchMakingResponse = null;
 
         while (webSocket.State == WebSocketState.Open)
         {
@@ -97,15 +97,18 @@ public sealed class GameController : ControllerBase
             {
                 if (value.GetInt32() == (int)WsMessageTypeEnum.MATCHMAKING)
                 {
-                    user = await _matchService.OnMatchMaking(
+                    matchMakingResponse = await _matchService.OnMatchMaking(
                         webSocket,
                         JsonSerializer.Deserialize<WsMessageDto>(message, jsonOptions)!
                     );
                 }
-                else if (value.GetInt32() == (int)WsMessageTypeEnum.MOVE && user != null)
+                else if (
+                    value.GetInt32() == (int)WsMessageTypeEnum.MOVE
+                    && matchMakingResponse?.MatchId != null
+                )
                 {
                     await _matchService.OnMove(
-                        user,
+                        matchMakingResponse,
                         JsonSerializer.Deserialize<WsMovePieceDto>(message, jsonOptions)!
                     );
                 }

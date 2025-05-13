@@ -18,7 +18,7 @@ public class UserService
         QueryBuilder = _dbSet.AsQueryable();
     }
 
-    public async Task<User> CreateAsync(CreateUserDto dto)
+    public async Task<User> CreateIfNotExistsAsync(CreateUserDto dto)
     {
         User? user = await GetByUsername(dto.Username);
 

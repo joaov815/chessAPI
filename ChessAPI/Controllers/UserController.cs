@@ -11,6 +11,6 @@ public sealed class UserController(UserService userService) : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateUserDto dto)
     {
-        return Ok(await userService.CreateAsync(dto));
+        return Ok(await userService.CreateIfNotExistsAsync(dto));
     }
 }

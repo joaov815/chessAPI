@@ -1,4 +1,5 @@
 using System.Net.WebSockets;
+using System.Text.Json;
 using ChessAPI.Data;
 using ChessAPI.Dtos;
 using ChessAPI.Enums;
@@ -31,28 +32,32 @@ public class MatchService
 
     private readonly UserService _userService;
 
-    public async Task OnUserConnected(User user)
+    public async Task<Match> OnUserConnected(User user)
     {
-        Match? ongoindMatch = await GetUserMatchMakingMatch(user);
+        Match? ongoingMatch = await GetUserOngoingMatch(user);
 
-        if (ongoindMatch != null)
+        Console.WriteLine(JsonSerializer.Serialize(ongoingMatch));
+
+        if (ongoingMatch != null)
         {
-            return;
+            return ongoingMatch;
         }
 
         Match? match = await GetMatchMakingMatch(user);
 
         if (match is null)
         {
-            await CreateAsync(user);
+            match = await CreateAsync(user);
         }
         else
         {
             await StartMatch(user, match);
         }
+
+        return match!;
     }
 
-    public async Task CreateAsync(User user)
+    public async Task<Match> CreateAsync(User user)
     {
         Match match = new()
         {
@@ -61,7 +66,6 @@ public class MatchService
             Rounds = 0,
         };
 
-        // Setar aleatoriamente se jogador vai sair com brancas ou pretas
         var random = new Random();
 
         if (random.Next(0, 1) == 1)
@@ -76,6 +80,8 @@ public class MatchService
         _dbSet.Add(match);
 
         await Context.SaveChangesAsync();
+
+        return match;
     }
 
     public List<Piece> SetInitialBoard(Match match)
@@ -164,13 +170,13 @@ public class MatchService
             );
     }
 
-    public async Task<Match?> GetUserMatchMakingMatch(User user)
+    public async Task<Match?> GetUserOngoingMatch(User user)
     {
         return await QueryBuilder
             .Include(_ => _.BlackUser)
             .Include(_ => _.WhiteUser)
             .FirstOrDefaultAsync(m =>
-                m.Status == MatchStatusEnum.MATCHMAKING
+                m.Status == MatchStatusEnum.ONGOING
                 && (
                     (m.BlackUser != null && m.BlackUser.Id == user.Id)
                     || (m.WhiteUser != null && m.WhiteUser.Id == user.Id)
@@ -178,23 +184,23 @@ public class MatchService
             );
     }
 
-    public async Task<User> OnMatchMaking(WebSocket webSocket, WsMessageDto dto)
+    public async Task<MatchMakingResponseDto> OnMatchMaking(WebSocket webSocket, WsMessageDto dto)
     {
-        User user =
-            await _userService.CreateAsync(new() { Username = dto.Username })
-            ?? throw new InvalidOperationException("User not found");
+        User user = await _userService.CreateIfNotExistsAsync(new() { Username = dto.Username });
 
         _manager.AddClient(webSocket, user);
 
-        await OnUserConnected(user);
+        var match = await OnUserConnected(user);
 
-        Console.WriteLine($"{user.Username} no matchmaking....");
-
-        return user;
+        return new MatchMakingResponseDto { MatchId = match.Id, User = user };
     }
 
-    public async Task OnMove(User user, WsMovePieceDto movePieceDto)
+    public async Task OnMove(
+        MatchMakingResponseDto matchMakingResponse,
+        WsMovePieceDto movePieceDto
+    )
     {
-        // TODO:
+        Console.WriteLine(JsonSerializer.Serialize(matchMakingResponse));
+        Console.WriteLine(JsonSerializer.Serialize(movePieceDto));
     }
 }
