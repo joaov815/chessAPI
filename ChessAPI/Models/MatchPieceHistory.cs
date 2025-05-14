@@ -7,6 +7,7 @@ public class MatchPieceHistory
 {
     [Key]
     public int Id { get; set; }
+    public required DateTime CreatedAt { get; set; }
     public required Match Match { get; set; }
     public required Piece Piece { get; set; }
     public required int Round { get; set; }

@@ -1,9 +1,9 @@
 using System.Net.WebSockets;
-using System.Text.Json;
 using ChessAPI.Data;
 using ChessAPI.Dtos;
 using ChessAPI.Enums;
 using ChessAPI.Models;
+using ChessAPI.Utils;
 using Microsoft.EntityFrameworkCore;
 
 namespace ChessAPI.Services;
@@ -14,38 +14,52 @@ public class MatchService
         AppDbContext context,
         UserService userService,
         PieceService pieceService,
+        MatchPieceHistoryService matchPieceHistoryService,
         WebSocketConnectionManager manager
     )
     {
         Context = context;
         _dbSet = context.Set<Match>();
-        _piecesDbSet = context.Set<Piece>();
         QueryBuilder = _dbSet.AsQueryable();
 
         _userService = userService;
         _pieceService = pieceService;
+        _matchPieceHistoryService = matchPieceHistoryService;
         _manager = manager;
     }
 
     private readonly WebSocketConnectionManager _manager;
 
     protected readonly DbSet<Match> _dbSet;
-    protected readonly DbSet<Piece> _piecesDbSet;
     public AppDbContext Context { get; set; }
     public IQueryable<Match> QueryBuilder { get; set; }
-
     private readonly UserService _userService;
     private readonly PieceService _pieceService;
+    private readonly MatchPieceHistoryService _matchPieceHistoryService;
 
-    public async Task<Match> OnUserConnected(User user)
+    public async Task<Match> OnUserConnected(WebSocket webSocket, User user)
     {
-        Match? ongoingMatch = await GetUserOngoingMatch(user);
+        Match? myUnfinishedMatch = await GetMyUnfinishedMatch(user);
 
-        Console.WriteLine(JsonSerializer.Serialize(ongoingMatch));
-
-        if (ongoingMatch != null)
+        if (_manager.GetClient(user.Id) is null)
         {
-            return ongoingMatch;
+            _manager.AddClient(webSocket, user);
+        }
+        if (myUnfinishedMatch != null)
+        {
+            await SocketUtils.SendMessage(
+                webSocket,
+                new MatchStartedResponseDto
+                {
+                    Type = MatchResponseTypeEnum.RECONNECTED,
+                    Color =
+                        myUnfinishedMatch.BlackUser?.Id == user.Id
+                            ? PieceColorEnum.BLACK
+                            : PieceColorEnum.WHITE,
+                }
+            );
+
+            return myUnfinishedMatch;
         }
 
         Match? match = await GetMatchMakingMatch(user);
@@ -99,7 +113,27 @@ public class MatchService
 
         await Context.SaveChangesAsync();
 
-        Console.WriteLine("Game started");
+        WsClient whiteClient = _manager.GetClient(match.WhiteUser!.Id)!;
+        WsClient blackClient = _manager.GetClient(match.BlackUser!.Id)!;
+
+        await SocketUtils.SendMessage(
+            whiteClient.Socket,
+            new MatchStartedResponseDto
+            {
+                Type = MatchResponseTypeEnum.MATCH_STARTED,
+                Color = PieceColorEnum.WHITE,
+            }
+        );
+        await SocketUtils.SendMessage(
+            blackClient.Socket,
+            new MatchStartedResponseDto
+            {
+                Type = MatchResponseTypeEnum.MATCH_STARTED,
+                Color = PieceColorEnum.BLACK,
+            }
+        );
+
+        Console.WriteLine("match Started");
     }
 
     public async Task<Match?> GetMatchMakingMatch(User user)
@@ -114,18 +148,17 @@ public class MatchService
             );
     }
 
-    public async Task<Match?> GetUserOngoingMatch(User user)
+    public async Task<Match?> GetMyUnfinishedMatch(User user)
     {
         return await QueryBuilder
             .Include(_ => _.BlackUser)
             .Include(_ => _.WhiteUser)
             .FirstOrDefaultAsync(m =>
-                m.Status == MatchStatusEnum.ONGOING
-                || m.Status == MatchStatusEnum.MATCHMAKING
-                    && (
-                        (m.BlackUser != null && m.BlackUser.Id == user.Id)
-                        || (m.WhiteUser != null && m.WhiteUser.Id == user.Id)
-                    )
+                (m.Status == MatchStatusEnum.ONGOING || m.Status == MatchStatusEnum.MATCHMAKING)
+                && (
+                    (m.BlackUser != null && m.BlackUser.Id == user.Id)
+                    || (m.WhiteUser != null && m.WhiteUser.Id == user.Id)
+                )
             );
     }
 
@@ -133,9 +166,7 @@ public class MatchService
     {
         User user = await _userService.CreateIfNotExistsAsync(new() { Username = dto.Username });
 
-        _manager.AddClient(webSocket, user);
-
-        var match = await OnUserConnected(user);
+        var match = await OnUserConnected(webSocket, user);
 
         return new MatchMakingResponseDto
         {
@@ -152,6 +183,15 @@ public class MatchService
             return;
         }
 
+        Match match =
+            await QueryBuilder.FirstOrDefaultAsync(
+                (_) => _.Id == my.MatchId && _.Status == MatchStatusEnum.ONGOING
+            ) ?? throw new Exception("Not found");
+
+        MatchPieceHistory? lastMove = await _matchPieceHistoryService.GetMatchLastPieceHistory(
+            my.MatchId
+        );
+
         List<Piece> pieces = await _pieceService.GetMatchActivePiecesAsync(my.MatchId);
         Dictionary<string, Piece> piecesPerPosition = pieces.ToDictionary(_ => _.Position);
 
@@ -159,95 +199,148 @@ public class MatchService
             (p) => p.Column == dto.FromColumn && p.Row == dto.FromRow
         );
 
-        if (myPiece == null || myPiece.Color != my.Color)
+        // Valida última jogada e garante que a cor da jogada seja diferente da anterior
+        if (
+            lastMove == null && match.BlackUser!.Id == my.User.Id
+            || lastMove?.Piece.Color == my.Color
+            || myPiece == null
+            || myPiece.Color != my.Color
+        )
         {
             return;
         }
 
-        Piece? pieceAtTarget = pieces.FirstOrDefault(
-            (p) => p.Column == dto.ToColumn && p.Row == dto.ToRow
-        );
-
-        bool hasPieceAtTarget = pieceAtTarget == null;
-        bool hasOpponentPieceAtTarget = pieceAtTarget?.IsOponents(myPiece) ?? false;
         PieceColorEnum opponentsColor =
             my.Color == PieceColorEnum.WHITE ? PieceColorEnum.BLACK : PieceColorEnum.WHITE;
 
-        if (myPiece.Value == PieceEnum.PAWN)
+        switch (myPiece.Value)
         {
-            var initialRow = myPiece.IsWhite ? 1 : 6;
+            case PieceEnum.PAWN:
+                await MovePawn(match, myPiece, dto, piecesPerPosition, lastMove);
+                break;
+            case PieceEnum.BISHOP:
+                // MoveBishop
+                break;
+            case PieceEnum.KNIGHT:
+                // MoveKnight
+                break;
+            case PieceEnum.HOOK:
+                // MoveHook
+                break;
+            case PieceEnum.QUEEN:
+                // MoveQueen
+                break;
+            default:
+                // MoveKing
+                break;
+        }
+    }
 
-            // TODO: Buscar última jogada do adversário
+    public async Task Move(
+        Match match,
+        Piece myPiece,
+        WsMovePieceDto dto,
+        Dictionary<string, Piece> piecesPerPosition
+    )
+    {
+        myPiece.Column = dto.ToColumn;
+        myPiece.Row = dto.ToRow;
 
-            // TODO: Fazer o inverso para as pecas pretas
-            if (myPiece.IsWhite)
-            {
-                List<string> availablePositions = [];
+        piecesPerPosition.TryGetValue(dto.ToPosition, out Piece? pieceAtTarget);
 
-                // Checar posicoes em linha reta
-                int positionsToCheckQuantity = myPiece.Row == initialRow ? 2 : 1;
-
-                for (int i = 1; i <= positionsToCheckQuantity; i++)
-                {
-                    var positionToCheck = ToPosition(myPiece.Row + i, myPiece.Column);
-
-                    if (piecesPerPosition.TryGetValue(positionToCheck, out _))
-                    {
-                        break;
-                    }
-
-                    availablePositions.Add(positionToCheck);
-                }
-
-                // Checar captura
-                for (int i = -1; i < 2; i += 2)
-                {
-                    var columnToCheck = myPiece.Column + i;
-
-                    // Não posso pular pra fora do tabuleiro
-                    if (columnToCheck + i > 7 || columnToCheck + i < 0)
-                    {
-                        continue;
-                    }
-
-                    var positionToCheck = ToPosition(myPiece.Row + 1, columnToCheck);
-
-                    if (piecesPerPosition.TryGetValue(positionToCheck, out Piece? pieceAtPosition))
-                    {
-                        // Não posso capturar minha propria peça
-                        if (!pieceAtPosition.IsOponents(myPiece))
-                        {
-                            continue;
-                        }
-
-                        availablePositions.Add(positionToCheck);
-                    }
-                    // else if()
-                    // {
-                    //     // en passant
-                    // }
-                }
-            }
-
-            // Verificar movimento inicial: pode avançar 1 ou 2 casas em linha reta
-            // Verificar
-
-            // pieces.Where(p => p.Row == dto.ToRow && p.Column == dto.ToColumn);
+        if (pieceAtTarget != null)
+        {
+            pieceAtTarget.WasCaptured = true;
         }
 
-        // TODO: replace rule verification
-        // if(dto.ToColumn >= 0 && dto.ToRow) {
+        ushort round = (ushort)(myPiece.IsWhite ? match.Rounds + 1 : match.Rounds);
 
-        // }
+        _matchPieceHistoryService.Save(
+            new()
+            {
+                Piece = myPiece,
+                CreatedAt = DateTime.Now,
+                CurrentColumn = dto.ToColumn,
+                CurrentRow = dto.ToRow,
+                PreviousColumn = dto.FromColumn,
+                PreviousRow = dto.FromColumn,
+                Match = match,
+                Round = round,
+            }
+        );
 
-        // se é movimento natural da peca
-        // se é nao possui uma peca de mesma cor no lugar de destino ou no caminho
-        // se
+        match.Rounds = round;
 
+        await Context.SaveChangesAsync();
+    }
 
+    public async Task MovePawn(
+        Match match,
+        Piece myPiece,
+        WsMovePieceDto dto,
+        Dictionary<string, Piece> piecesPerPosition,
+        MatchPieceHistory? lastMove
+    )
+    {
+        var initialRow = myPiece.IsWhite ? 1 : 6;
 
-        // Console.WriteLine(JsonSerializer.Serialize(matchMakingResponse));
-        Console.WriteLine(JsonSerializer.Serialize(dto));
+        List<string> availablePositions = [];
+
+        // Checar posicoes em linha reta
+        int positionsToCheckQuantity = myPiece.Row == initialRow ? 2 : 1;
+
+        for (int i = 1; i <= positionsToCheckQuantity; i++)
+        {
+            var rowToCheck = myPiece.Row + (myPiece.IsWhite ? i : -i);
+            var positionToCheck = ToPosition(rowToCheck, myPiece.Column);
+
+            if (piecesPerPosition.TryGetValue(positionToCheck, out _))
+            {
+                break;
+            }
+
+            availablePositions.Add(positionToCheck);
+        }
+
+        // Checar captura
+        for (int i = -1; i < 2; i += 2)
+        {
+            var columnToCheck = myPiece.Column + i;
+
+            // Não posso pular pra fora do tabuleiro
+            if (columnToCheck + i > 7 || columnToCheck + i < 0)
+            {
+                continue;
+            }
+
+            var rowToCheck = myPiece.Row + (myPiece.IsWhite ? 1 : -1);
+            var positionToCheck = ToPosition(rowToCheck, columnToCheck);
+
+            if (piecesPerPosition.TryGetValue(positionToCheck, out Piece? pieceAtPosition))
+            {
+                // Não posso capturar minha propria peça
+                if (!pieceAtPosition.IsOponents(myPiece))
+                {
+                    continue;
+                }
+
+                availablePositions.Add(positionToCheck);
+            }
+            else if (
+                lastMove?.Piece.Value == PieceEnum.PAWN
+                && lastMove.CurrentColumn == columnToCheck
+                && lastMove.CurrentRow == myPiece.Row
+            )
+            {
+                // en passant
+                availablePositions.Add(positionToCheck);
+            }
+        }
+
+        if (availablePositions.Contains(dto.ToPosition))
+        {
+            await Move(match, myPiece, dto, piecesPerPosition);
+        }
     }
 
     public string ToPosition(int row, int column)

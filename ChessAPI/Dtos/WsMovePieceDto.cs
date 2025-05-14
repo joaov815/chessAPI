@@ -11,4 +11,9 @@ public class WsMovePieceDto
     {
         return !((FromRow == ToRow && FromColumn == ToColumn) || ToColumn > 7 || ToRow > 7);
     }
+
+    public string ToPosition
+    {
+        get => $"{ToRow}{ToColumn}";
+    }
 }
