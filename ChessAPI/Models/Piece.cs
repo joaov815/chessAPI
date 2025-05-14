@@ -1,3 +1,4 @@
+using System.ComponentModel.DataAnnotations.Schema;
 using ChessAPI.Enums;
 
 namespace ChessAPI.Models;
@@ -11,6 +12,23 @@ public class Piece
     public required int Column { get; set; }
     public required int Row { get; set; }
     public required bool WasCaptured { get; set; } = false;
+
+    [NotMapped]
+    public bool IsWhite
+    {
+        get => Color == PieceColorEnum.WHITE;
+    }
+
+    [NotMapped]
+    public string Position
+    {
+        get => Row.ToString() + Column.ToString();
+    }
+
+    public bool IsOponents(Piece piece)
+    {
+        return Color != piece.Color;
+    }
 
     public void Promote(PieceEnum value)
     {

@@ -13,7 +13,9 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
+builder.Services.AddScoped<MatchPieceHistoryService>();
 builder.Services.AddScoped<UserService>();
+builder.Services.AddScoped<PieceService>();
 builder.Services.AddScoped<MatchService>();
 builder.Services.AddSingleton<WebSocketConnectionManager>();
 

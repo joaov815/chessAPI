@@ -1,11 +1,14 @@
-using ChessAPI.Enums;
-
 namespace ChessAPI.Dtos;
 
 public class WsMovePieceDto
 {
-    public required int PieceId { get; set; }
-    public required ColumnEnum ToColumn { get; set; }
-    public required RowEnum ToRow { get; set; }
-    public required WsMessageTypeEnum Type { get; set; }
+    public required int FromRow { get; set; }
+    public required int FromColumn { get; set; }
+    public required int ToColumn { get; set; }
+    public required int ToRow { get; set; }
+
+    public bool IsValid()
+    {
+        return !((FromRow == ToRow && FromColumn == ToColumn) || ToColumn > 7 || ToRow > 7);
+    }
 }

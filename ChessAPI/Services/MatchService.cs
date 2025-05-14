@@ -13,6 +13,7 @@ public class MatchService
     public MatchService(
         AppDbContext context,
         UserService userService,
+        PieceService pieceService,
         WebSocketConnectionManager manager
     )
     {
@@ -22,6 +23,7 @@ public class MatchService
         QueryBuilder = _dbSet.AsQueryable();
 
         _userService = userService;
+        _pieceService = pieceService;
         _manager = manager;
     }
 
@@ -33,6 +35,7 @@ public class MatchService
     public IQueryable<Match> QueryBuilder { get; set; }
 
     private readonly UserService _userService;
+    private readonly PieceService _pieceService;
 
     public async Task<Match> OnUserConnected(User user)
     {
@@ -86,80 +89,13 @@ public class MatchService
         return match;
     }
 
-    public List<Piece> SetInitialBoard(Match match)
-    {
-        List<Piece> pieces = [];
-
-        for (int i = 0; i < 16; i++)
-        {
-            bool isWhite = i < 8;
-            int column = i < 8 ? i : i - 8;
-
-            pieces.Add(
-                new()
-                {
-                    Value = PieceEnum.PAWN,
-                    Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
-                    Column = column,
-                    Row = isWhite ? 1 : 7,
-                    WasCaptured = false,
-                    Match = match,
-                }
-            );
-        }
-
-        PieceEnum[] piecesValues = [PieceEnum.HOOK, PieceEnum.KNIGHT, PieceEnum.BISHOP];
-
-        for (int j = 0; j < piecesValues.Length; j++)
-        {
-            for (int i = 0; i < 4; i++)
-            {
-                bool isWhite = i < 2;
-
-                pieces.Add(
-                    new()
-                    {
-                        Value = piecesValues[j],
-                        Column = i % 2 == 0 ? j : (7 - j),
-                        Row = isWhite ? 0 : 8,
-                        Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
-                        WasCaptured = false,
-                        Match = match,
-                    }
-                );
-            }
-        }
-
-        for (int i = 0; i < 4; i++)
-        {
-            bool isWhite = i < 2;
-            bool isEven = i % 2 == 0;
-
-            pieces.Add(
-                new()
-                {
-                    Value = isEven ? PieceEnum.QUEEN : PieceEnum.KING,
-                    Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
-                    Column = isEven ? 3 : 4,
-                    Row = isWhite ? 0 : 8,
-                    WasCaptured = false,
-                    Match = match,
-                }
-            );
-        }
-
-        _piecesDbSet.AddRange(pieces);
-
-        return pieces;
-    }
-
     public async Task StartMatch(User user, Match match)
     {
         match.SetSecondPlayer(user);
         match.StartedAt = DateTime.UtcNow;
         match.Status = MatchStatusEnum.ONGOING;
 
-        SetInitialBoard(match);
+        _pieceService.SetInitialBoard(match);
 
         await Context.SaveChangesAsync();
 
@@ -201,15 +137,121 @@ public class MatchService
 
         var match = await OnUserConnected(user);
 
-        return new MatchMakingResponseDto { MatchId = match.Id, User = user };
+        return new MatchMakingResponseDto
+        {
+            MatchId = match.Id,
+            User = user,
+            Color = match.BlackUser != null ? PieceColorEnum.BLACK : PieceColorEnum.WHITE,
+        };
     }
 
-    public async Task OnMove(
-        MatchMakingResponseDto matchMakingResponse,
-        WsMovePieceDto movePieceDto
-    )
+    public async Task OnMove(MatchMakingResponseDto my, WsMovePieceDto dto)
     {
-        Console.WriteLine(JsonSerializer.Serialize(matchMakingResponse));
-        Console.WriteLine(JsonSerializer.Serialize(movePieceDto));
+        if (!dto.IsValid())
+        {
+            return;
+        }
+
+        List<Piece> pieces = await _pieceService.GetMatchActivePiecesAsync(my.MatchId);
+        Dictionary<string, Piece> piecesPerPosition = pieces.ToDictionary(_ => _.Position);
+
+        Piece? myPiece = pieces.FirstOrDefault(
+            (p) => p.Column == dto.FromColumn && p.Row == dto.FromRow
+        );
+
+        if (myPiece == null || myPiece.Color != my.Color)
+        {
+            return;
+        }
+
+        Piece? pieceAtTarget = pieces.FirstOrDefault(
+            (p) => p.Column == dto.ToColumn && p.Row == dto.ToRow
+        );
+
+        bool hasPieceAtTarget = pieceAtTarget == null;
+        bool hasOpponentPieceAtTarget = pieceAtTarget?.IsOponents(myPiece) ?? false;
+        PieceColorEnum opponentsColor =
+            my.Color == PieceColorEnum.WHITE ? PieceColorEnum.BLACK : PieceColorEnum.WHITE;
+
+        if (myPiece.Value == PieceEnum.PAWN)
+        {
+            var initialRow = myPiece.IsWhite ? 1 : 6;
+
+            // TODO: Buscar última jogada do adversário
+
+            // TODO: Fazer o inverso para as pecas pretas
+            if (myPiece.IsWhite)
+            {
+                List<string> availablePositions = [];
+
+                // Checar posicoes em linha reta
+                int positionsToCheckQuantity = myPiece.Row == initialRow ? 2 : 1;
+
+                for (int i = 1; i <= positionsToCheckQuantity; i++)
+                {
+                    var positionToCheck = ToPosition(myPiece.Row + i, myPiece.Column);
+
+                    if (piecesPerPosition.TryGetValue(positionToCheck, out _))
+                    {
+                        break;
+                    }
+
+                    availablePositions.Add(positionToCheck);
+                }
+
+                // Checar captura
+                for (int i = -1; i < 2; i += 2)
+                {
+                    var columnToCheck = myPiece.Column + i;
+
+                    // Não posso pular pra fora do tabuleiro
+                    if (columnToCheck + i > 7 || columnToCheck + i < 0)
+                    {
+                        continue;
+                    }
+
+                    var positionToCheck = ToPosition(myPiece.Row + 1, columnToCheck);
+
+                    if (piecesPerPosition.TryGetValue(positionToCheck, out Piece? pieceAtPosition))
+                    {
+                        // Não posso capturar minha propria peça
+                        if (!pieceAtPosition.IsOponents(myPiece))
+                        {
+                            continue;
+                        }
+
+                        availablePositions.Add(positionToCheck);
+                    }
+                    // else if()
+                    // {
+                    //     // en passant
+                    // }
+                }
+            }
+
+            // Verificar movimento inicial: pode avançar 1 ou 2 casas em linha reta
+            // Verificar
+
+            // pieces.Where(p => p.Row == dto.ToRow && p.Column == dto.ToColumn);
+        }
+
+        // TODO: replace rule verification
+        // if(dto.ToColumn >= 0 && dto.ToRow) {
+
+        // }
+
+        // se é movimento natural da peca
+        // se é nao possui uma peca de mesma cor no lugar de destino ou no caminho
+        // se
+
+
+
+        // Console.WriteLine(JsonSerializer.Serialize(matchMakingResponse));
+        Console.WriteLine(JsonSerializer.Serialize(dto));
+    }
+
+    public string ToPosition(int row, int column)
+    {
+        return $"{row}{column}";
     }
 }

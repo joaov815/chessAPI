@@ -3,6 +3,7 @@ using System;
 using ChessAPI.Data;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace ChessAPI.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20250514170346_MatchPieceHistory")]
+    partial class MatchPieceHistory
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -55,44 +58,6 @@ namespace ChessAPI.Migrations
                     b.HasIndex("WhiteUserId");
 
                     b.ToTable("Matches");
-                });
-
-            modelBuilder.Entity("ChessAPI.Models.MatchPieceHistory", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer");
-
-                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
-
-                    b.Property<int>("CurrentColumn")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("CurrentRow")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("MatchId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("PieceId")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("PreviousColumn")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("PreviousRow")
-                        .HasColumnType("integer");
-
-                    b.Property<int>("Round")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("MatchId");
-
-                    b.HasIndex("PieceId");
-
-                    b.ToTable("MatchPieceHistories");
                 });
 
             modelBuilder.Entity("ChessAPI.Models.Piece", b =>
@@ -161,25 +126,6 @@ namespace ChessAPI.Migrations
                     b.Navigation("BlackUser");
 
                     b.Navigation("WhiteUser");
-                });
-
-            modelBuilder.Entity("ChessAPI.Models.MatchPieceHistory", b =>
-                {
-                    b.HasOne("ChessAPI.Models.Match", "Match")
-                        .WithMany()
-                        .HasForeignKey("MatchId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("ChessAPI.Models.Piece", "Piece")
-                        .WithMany()
-                        .HasForeignKey("PieceId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Match");
-
-                    b.Navigation("Piece");
                 });
 
             modelBuilder.Entity("ChessAPI.Models.Piece", b =>

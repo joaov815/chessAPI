@@ -8,6 +8,7 @@ public class AppDbContext(IConfiguration _configuration) : DbContext
     public DbSet<User> Users { get; set; }
     public DbSet<Match> Matches { get; set; }
     public DbSet<Piece> Pieces { get; set; }
+    public DbSet<MatchPieceHistory> MatchPieceHistories { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
