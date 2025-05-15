@@ -40,7 +40,7 @@ public class PieceService
             );
         }
 
-        PieceEnum[] piecesValues = [PieceEnum.HOOK, PieceEnum.KNIGHT, PieceEnum.BISHOP];
+        PieceEnum[] piecesValues = [PieceEnum.ROOK, PieceEnum.KNIGHT, PieceEnum.BISHOP];
 
         for (int j = 0; j < piecesValues.Length; j++)
         {
@@ -53,7 +53,7 @@ public class PieceService
                     {
                         Value = piecesValues[j],
                         Column = i % 2 == 0 ? j : (7 - j),
-                        Row = isWhite ? 0 : 8,
+                        Row = isWhite ? 0 : 7,
                         Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
                         WasCaptured = false,
                         Match = match,
@@ -73,7 +73,7 @@ public class PieceService
                     Value = isEven ? PieceEnum.QUEEN : PieceEnum.KING,
                     Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
                     Column = isEven ? 3 : 4,
-                    Row = isWhite ? 0 : 8,
+                    Row = isWhite ? 0 : 7,
                     WasCaptured = false,
                     Match = match,
                 }

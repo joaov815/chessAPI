@@ -224,7 +224,7 @@ public class MatchService
             case PieceEnum.KNIGHT:
                 // MoveKnight
                 break;
-            case PieceEnum.HOOK:
+            case PieceEnum.ROOK:
                 // MoveHook
                 break;
             case PieceEnum.QUEEN:

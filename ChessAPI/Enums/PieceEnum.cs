@@ -5,7 +5,7 @@ public enum PieceEnum
     PAWN,
     KNIGHT,
     BISHOP,
-    HOOK,
+    ROOK,
     QUEEN,
     KING,
 }
