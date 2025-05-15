@@ -3,8 +3,8 @@ using System.Text;
 using System.Text.Json;
 using ChessAPI.Dtos;
 using ChessAPI.Enums;
-using ChessAPI.Models;
 using ChessAPI.Services;
+using ChessAPI.Utils;
 using Microsoft.AspNetCore.Mvc;
 
 namespace ChessAPI.Controllers;
@@ -114,15 +114,7 @@ public sealed class GameController : ControllerBase
                 }
             }
 
-            var responseJson = JsonSerializer.Serialize(message, jsonOptions);
-            var response = Encoding.UTF8.GetBytes(responseJson);
-
-            await webSocket.SendAsync(
-                new ArraySegment<byte>(response),
-                WebSocketMessageType.Text,
-                true,
-                CancellationToken.None
-            );
+            await SocketUtils.SendMessage(webSocket, message);
         }
     }
 }

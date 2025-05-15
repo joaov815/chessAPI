@@ -1,8 +1,9 @@
 using System.Collections.Concurrent;
 using System.Net.WebSockets;
-using System.Text;
 using ChessAPI.Dtos;
+using ChessAPI.Enums;
 using ChessAPI.Models;
+using ChessAPI.Utils;
 
 namespace ChessAPI.Services;
 
@@ -43,12 +44,12 @@ public sealed class WebSocketConnectionManager
 
             try
             {
-                var pingMessage = Encoding.UTF8.GetBytes("{\"type\":\"ping\"}");
-                await socket.SendAsync(
-                    new ArraySegment<byte>(pingMessage),
-                    WebSocketMessageType.Text,
-                    true,
-                    CancellationToken.None
+                await SocketUtils.SendMessage(
+                    socket,
+                    new Dictionary<string, WsMessageTypeResponseEnum>
+                    {
+                        { "type", WsMessageTypeResponseEnum.PING },
+                    }
                 );
             }
             catch
