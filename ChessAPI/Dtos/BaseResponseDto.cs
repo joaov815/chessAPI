@@ -4,5 +4,5 @@ namespace ChessAPI.Dtos;
 
 public class BaseResponseDto
 {
-    public required MatchResponseTypeEnum Type { get; set; }
+    public required WsMessageTypeResponseEnum Type { get; set; }
 }

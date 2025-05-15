@@ -51,7 +51,7 @@ public class MatchService
                 webSocket,
                 new MatchStartedResponseDto
                 {
-                    Type = MatchResponseTypeEnum.RECONNECTED,
+                    Type = WsMessageTypeResponseEnum.RECONNECTED,
                     Color =
                         myUnfinishedMatch.BlackUser?.Id == user.Id
                             ? PieceColorEnum.BLACK
@@ -120,7 +120,7 @@ public class MatchService
             whiteClient.Socket,
             new MatchStartedResponseDto
             {
-                Type = MatchResponseTypeEnum.MATCH_STARTED,
+                Type = WsMessageTypeResponseEnum.MATCH_STARTED,
                 Color = PieceColorEnum.WHITE,
             }
         );
@@ -128,7 +128,7 @@ public class MatchService
             blackClient.Socket,
             new MatchStartedResponseDto
             {
-                Type = MatchResponseTypeEnum.MATCH_STARTED,
+                Type = WsMessageTypeResponseEnum.MATCH_STARTED,
                 Color = PieceColorEnum.BLACK,
             }
         );
