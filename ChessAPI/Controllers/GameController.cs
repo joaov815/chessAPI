@@ -2,6 +2,7 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using ChessAPI.Dtos;
+using ChessAPI.Dtos.Response;
 using ChessAPI.Enums;
 using ChessAPI.Services;
 using ChessAPI.Utils;
@@ -38,7 +39,7 @@ public sealed class GameController : ControllerBase
             // Console.WriteLine("HeathCheck");
 
             await _manager.HealthCheckAllAsync();
-            await Task.Delay(200);
+            await Task.Delay(1_000);
         }
     }
 
@@ -102,15 +103,27 @@ public sealed class GameController : ControllerBase
                         JsonSerializer.Deserialize<WsMessageDto>(message, jsonOptions)!
                     );
                 }
-                else if (
-                    value.GetInt32() == (int)WsMessageTypeEnum.MOVE
-                    && matchMakingResponse?.MatchId != null
-                )
+                else if (matchMakingResponse?.MatchId != null)
                 {
-                    await _matchService.OnMove(
-                        matchMakingResponse,
-                        JsonSerializer.Deserialize<WsMovePieceDto>(message, jsonOptions)!
-                    );
+                    if (value.GetInt32() == (int)WsMessageTypeEnum.MOVE)
+                    {
+                        await _matchService.OnMove(
+                            webSocket,
+                            matchMakingResponse,
+                            JsonSerializer.Deserialize<WsMovePieceDto>(message, jsonOptions)!
+                        );
+                    }
+                    else if (
+                        value.GetInt32() == (int)WsMessageTypeEnum.GET_PIECE_AVAILABLE_POSITIONS
+                        && matchMakingResponse?.MatchId != null
+                    )
+                    {
+                        await _matchService.GetPieceAvailablePositions(
+                            webSocket,
+                            matchMakingResponse,
+                            JsonSerializer.Deserialize<GetPiecePositionsDto>(message, jsonOptions)!
+                        );
+                    }
                 }
             }
 

@@ -29,8 +29,10 @@ public class MatchPieceHistoryService
             .FirstOrDefaultAsync();
     }
 
-    public void Save(MatchPieceHistory matchPieceHistory)
+    public MatchPieceHistory Save(MatchPieceHistory matchPieceHistory)
     {
         _dbSet.Add(matchPieceHistory);
+
+        return matchPieceHistory;
     }
 }

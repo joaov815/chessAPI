@@ -85,17 +85,22 @@ public class PieceService
         return pieces;
     }
 
-    public async Task<Piece> GetPieceByPositionAsync(int row, int column)
+    public async Task<Piece> GetPieceByPositionAsync(int matchId, int row, int column)
     {
         Piece piece =
-            await QueryBuilder.FirstOrDefaultAsync(_ => _.Row == row && _.Column == column)
-            ?? throw new Exception("Not Found piece");
+            await QueryBuilder.FirstOrDefaultAsync(_ =>
+                _.Match.Id == matchId && _.Row == row && _.Column == column && !_.WasCaptured
+            ) ?? throw new Exception("Not Found piece");
 
         return piece;
     }
 
-    public async Task<List<Piece>> GetMatchActivePiecesAsync(int matchId)
+    public async Task<Dictionary<string, Piece>> GetMatchActivePiecesPerPosition(int matchId)
     {
-        return await QueryBuilder.Where(_ => _.Match.Id == matchId).ToListAsync();
+        var pieces = await QueryBuilder
+            .Where(_ => _.Match.Id == matchId && !_.WasCaptured)
+            .ToListAsync();
+
+        return pieces.ToDictionary(_ => _.Position);
     }
 }

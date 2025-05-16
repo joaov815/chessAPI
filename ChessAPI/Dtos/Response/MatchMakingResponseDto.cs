@@ -1,7 +1,7 @@
 using ChessAPI.Enums;
 using ChessAPI.Models;
 
-namespace ChessAPI.Dtos;
+namespace ChessAPI.Dtos.Response;
 
 public class MatchMakingResponseDto
 {

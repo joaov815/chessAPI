@@ -1,6 +1,8 @@
 using System.Net.WebSockets;
+using System.Text.Json;
 using ChessAPI.Data;
 using ChessAPI.Dtos;
+using ChessAPI.Dtos.Response;
 using ChessAPI.Enums;
 using ChessAPI.Models;
 using ChessAPI.Utils;
@@ -172,11 +174,11 @@ public class MatchService
         {
             MatchId = match.Id,
             User = user,
-            Color = match.BlackUser != null ? PieceColorEnum.BLACK : PieceColorEnum.WHITE,
+            Color = match.BlackUser?.Id == user.Id ? PieceColorEnum.BLACK : PieceColorEnum.WHITE,
         };
     }
 
-    public async Task OnMove(MatchMakingResponseDto my, WsMovePieceDto dto)
+    public async Task OnMove(WebSocket mySocket, MatchMakingResponseDto my, WsMovePieceDto dto)
     {
         if (!dto.IsValid())
         {
@@ -192,12 +194,9 @@ public class MatchService
             my.MatchId
         );
 
-        List<Piece> pieces = await _pieceService.GetMatchActivePiecesAsync(my.MatchId);
-        Dictionary<string, Piece> piecesPerPosition = pieces.ToDictionary(_ => _.Position);
+        var piecesPerPosition = await _pieceService.GetMatchActivePiecesPerPosition(my.MatchId);
 
-        Piece? myPiece = pieces.FirstOrDefault(
-            (p) => p.Column == dto.FromColumn && p.Row == dto.FromRow
-        );
+        Piece? myPiece = piecesPerPosition.FirstOrDefault((p) => p.Key == dto.FromPosition).Value;
 
         // Valida última jogada e garante que a cor da jogada seja diferente da anterior
         if (
@@ -213,27 +212,94 @@ public class MatchService
         PieceColorEnum opponentsColor =
             my.Color == PieceColorEnum.WHITE ? PieceColorEnum.BLACK : PieceColorEnum.WHITE;
 
-        switch (myPiece.Value)
+        List<string> availablePositions = GetPieceAvailablePositions(
+            myPiece,
+            piecesPerPosition,
+            lastMove
+        );
+
+        if (availablePositions.Contains(dto.ToPosition))
         {
-            case PieceEnum.PAWN:
-                await MovePawn(match, myPiece, dto, piecesPerPosition, lastMove);
-                break;
-            case PieceEnum.BISHOP:
-                // MoveBishop
-                break;
-            case PieceEnum.KNIGHT:
-                // MoveKnight
-                break;
-            case PieceEnum.ROOK:
-                // MoveHook
-                break;
-            case PieceEnum.QUEEN:
-                // MoveQueen
-                break;
-            default:
-                // MoveKing
-                break;
+            await Move(match, myPiece, dto, piecesPerPosition);
         }
+        else
+        {
+            await SocketUtils.SendMessage(
+                mySocket,
+                new BaseResponseDto { Type = WsMessageTypeResponseEnum.INVALID_MOVE }
+            );
+        }
+    }
+
+    public async Task GetPieceAvailablePositions(
+        WebSocket mySocket,
+        MatchMakingResponseDto my,
+        GetPiecePositionsDto dto
+    )
+    {
+        Piece piece = await _pieceService.GetPieceByPositionAsync(my.MatchId, dto.Row, dto.Column);
+        object response;
+
+        Console.WriteLine(JsonSerializer.Serialize(piece));
+        Console.WriteLine(piece.Color);
+        Console.WriteLine(my.Color);
+
+        if (piece.Color == my.Color)
+        {
+            var piecesPerPosition = await _pieceService.GetMatchActivePiecesPerPosition(my.MatchId);
+            MatchPieceHistory? lastMove = await _matchPieceHistoryService.GetMatchLastPieceHistory(
+                my.MatchId
+            );
+
+            response = new AvailablePositionsDto
+            {
+                Positions = GetPieceAvailablePositions(piece, piecesPerPosition, lastMove),
+            };
+        }
+        else
+        {
+            response = new BaseResponseDto { Type = WsMessageTypeResponseEnum.INVALID };
+        }
+
+        Console.WriteLine(JsonSerializer.Serialize(response));
+
+        await SocketUtils.SendMessage(mySocket, response);
+    }
+
+    private List<string> GetPieceAvailablePositions(
+        Piece piece,
+        Dictionary<string, Piece> piecesPerPosition,
+        MatchPieceHistory? lastMove
+    )
+    {
+        List<string> availablePositions = [];
+
+        if (piece.Value == PieceEnum.PAWN)
+        {
+            availablePositions = GetPawnAvailablePositions(piece, piecesPerPosition, lastMove);
+        }
+        else if (piece.Value == PieceEnum.BISHOP)
+        {
+            // TODO:
+        }
+        else if (piece.Value == PieceEnum.KNIGHT)
+        {
+            // TODO:
+        }
+        else if (piece.Value == PieceEnum.ROOK)
+        {
+            // TODO:
+        }
+        else if (piece.Value == PieceEnum.QUEEN)
+        {
+            // TODO:
+        }
+        else if (piece.Value == PieceEnum.KING)
+        {
+            // TODO:
+        }
+
+        return availablePositions;
     }
 
     public async Task Move(
@@ -255,7 +321,7 @@ public class MatchService
 
         ushort round = (ushort)(myPiece.IsWhite ? match.Rounds + 1 : match.Rounds);
 
-        _matchPieceHistoryService.Save(
+        var history = _matchPieceHistoryService.Save(
             new()
             {
                 Piece = myPiece,
@@ -272,12 +338,18 @@ public class MatchService
         match.Rounds = round;
 
         await Context.SaveChangesAsync();
+
+        MoveResponseDto response = new()
+        {
+            Type = WsMessageTypeResponseEnum.MOVE,
+            MatchPieceHistory = history,
+        };
+
+        await _manager.SendMatchClients(match.Id, response);
     }
 
-    public async Task MovePawn(
-        Match match,
+    public List<string> GetPawnAvailablePositions(
         Piece myPiece,
-        WsMovePieceDto dto,
         Dictionary<string, Piece> piecesPerPosition,
         MatchPieceHistory? lastMove
     )
@@ -337,10 +409,7 @@ public class MatchService
             }
         }
 
-        if (availablePositions.Contains(dto.ToPosition))
-        {
-            await Move(match, myPiece, dto, piecesPerPosition);
-        }
+        return availablePositions;
     }
 
     public string ToPosition(int row, int column)

@@ -23,12 +23,27 @@ public sealed class WebSocketConnectionManager
         return client;
     }
 
+    public async Task SendMatchClients(int matchId, object message)
+    {
+        Task[] clients =
+        [
+            .. GetMatchClients(matchId)
+                .Select(client => SocketUtils.SendMessage(client.Socket, message)),
+        ];
+
+        await Task.WhenAll(clients);
+    }
+
+    public List<WsClient> GetMatchClients(int matchId)
+    {
+        return [.. _clients.Select(_ => _.Value).Where(_ => _.Match?.Id == matchId)];
+    }
+
     public IEnumerable<WsClient> GetAllClients() => _clients.Values;
 
     public async Task HealthCheckAllAsync()
     {
         Console.WriteLine("----HealthCheckAllAsync-----");
-        Console.WriteLine($"qtd: {_clients.Count}");
 
         List<int> deadSockets = [];
 

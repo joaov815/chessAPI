@@ -16,4 +16,9 @@ public class WsMovePieceDto
     {
         get => $"{ToRow}{ToColumn}";
     }
+
+    public string FromPosition
+    {
+        get => $"{FromRow}{FromColumn}";
+    }
 }
