@@ -95,11 +95,14 @@ public class PieceService
         return piece;
     }
 
+    public async Task<List<Piece>> GetMatchActivePieces(int matchId)
+    {
+        return await QueryBuilder.Where(_ => _.Match.Id == matchId && !_.WasCaptured).ToListAsync();
+    }
+
     public async Task<Dictionary<string, Piece>> GetMatchActivePiecesPerPosition(int matchId)
     {
-        var pieces = await QueryBuilder
-            .Where(_ => _.Match.Id == matchId && !_.WasCaptured)
-            .ToListAsync();
+        var pieces = await GetMatchActivePieces(matchId);
 
         return pieces.ToDictionary(_ => _.Position);
     }

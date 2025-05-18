@@ -35,9 +35,6 @@ public sealed class GameController : ControllerBase
     {
         while (true)
         {
-            // Console.WriteLine("-------->");
-            // Console.WriteLine("HeathCheck");
-
             await _manager.HealthCheckAllAsync();
             await Task.Delay(1_000);
         }

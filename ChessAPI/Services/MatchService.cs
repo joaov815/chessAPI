@@ -49,15 +49,17 @@ public class MatchService
         }
         if (myUnfinishedMatch != null)
         {
+            List<Piece> pieces = await _pieceService.GetMatchActivePieces(myUnfinishedMatch.Id);
+
             await SocketUtils.SendMessage(
                 webSocket,
-                new MatchStartedResponseDto
+                new MatchReconnectedDto
                 {
-                    Type = WsMessageTypeResponseEnum.RECONNECTED,
                     Color =
                         myUnfinishedMatch.BlackUser?.Id == user.Id
                             ? PieceColorEnum.BLACK
                             : PieceColorEnum.WHITE,
+                    Pieces = pieces,
                 }
             );
 
@@ -134,8 +136,6 @@ public class MatchService
                 Color = PieceColorEnum.BLACK,
             }
         );
-
-        Console.WriteLine("match Started");
     }
 
     public async Task<Match?> GetMatchMakingMatch(User user)
@@ -240,10 +240,6 @@ public class MatchService
         Piece piece = await _pieceService.GetPieceByPositionAsync(my.MatchId, dto.Row, dto.Column);
         object response;
 
-        Console.WriteLine(JsonSerializer.Serialize(piece));
-        Console.WriteLine(piece.Color);
-        Console.WriteLine(my.Color);
-
         if (piece.Color == my.Color)
         {
             var piecesPerPosition = await _pieceService.GetMatchActivePiecesPerPosition(my.MatchId);
@@ -260,8 +256,6 @@ public class MatchService
         {
             response = new BaseResponseDto { Type = WsMessageTypeResponseEnum.INVALID };
         }
-
-        Console.WriteLine(JsonSerializer.Serialize(response));
 
         await SocketUtils.SendMessage(mySocket, response);
     }
@@ -325,7 +319,7 @@ public class MatchService
             new()
             {
                 Piece = myPiece,
-                CreatedAt = DateTime.Now,
+                CreatedAt = DateTime.UtcNow,
                 CurrentColumn = dto.ToColumn,
                 CurrentRow = dto.ToRow,
                 PreviousColumn = dto.FromColumn,
