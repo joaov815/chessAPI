@@ -141,25 +141,6 @@ public class MatchService
                 )
             )
         );
-
-        // await SocketUtils.SendMessage(
-        //     whiteClient.Socket,
-        //     new MatchStartedResponseDto
-        //     {
-        //         Type = WsMessageTypeResponseEnum.MATCH_STARTED,
-        //         Color = PieceColorEnum.WHITE,
-        //         BlackUsername = match.BlackUser.Username,
-        //         WhiteUsername = match.WhiteUser.Username,
-        //     }
-        // );
-        // await SocketUtils.SendMessage(
-        //     blackClient.Socket,
-        //     new MatchStartedResponseDto
-        //     {
-        //         Type = WsMessageTypeResponseEnum.MATCH_STARTED,
-        //         Color = PieceColorEnum.BLACK,
-        //     }
-        // );
     }
 
     public async Task<Match?> GetMatchMakingMatch(User user)
@@ -298,29 +279,24 @@ public class MatchService
     {
         List<string> availablePositions = [];
 
-        if (piece.Value == PieceEnum.PAWN)
+        switch (piece.Value)
         {
-            availablePositions = GetPawnAvailablePositions(piece, piecesPerPosition, lastMove);
-        }
-        else if (piece.Value == PieceEnum.BISHOP)
-        {
-            // TODO:
-        }
-        else if (piece.Value == PieceEnum.KNIGHT)
-        {
-            // TODO:
-        }
-        else if (piece.Value == PieceEnum.ROOK)
-        {
-            // TODO:
-        }
-        else if (piece.Value == PieceEnum.QUEEN)
-        {
-            // TODO:
-        }
-        else if (piece.Value == PieceEnum.KING)
-        {
-            // TODO:
+            case PieceEnum.PAWN:
+                availablePositions = GetPawnAvailablePositions(piece, piecesPerPosition, lastMove);
+                break;
+            case PieceEnum.BISHOP:
+            case PieceEnum.ROOK:
+            case PieceEnum.QUEEN:
+                availablePositions = GetBRQAvailablePositions(piece, piecesPerPosition);
+                break;
+            case PieceEnum.KNIGHT:
+                // TODO:
+                break;
+            case PieceEnum.KING:
+                // TODO:
+                break;
+            default:
+                throw new Exception("INVALID PIECE");
         }
 
         return availablePositions;
@@ -439,6 +415,66 @@ public class MatchService
                     columnToCheck
                 );
                 myPiece.OnPassantCapturePosition = enPassantPos;
+            }
+        }
+
+        return availablePositions;
+    }
+
+    public List<string> GetBRQAvailablePositions(
+        Piece myPiece,
+        Dictionary<string, Piece> piecesPerPosition
+    )
+    {
+        List<string> availablePositions = [];
+
+        int[][] bishopDirections =
+        [
+            [-1, -1],
+            [1, -1],
+            [-1, 1],
+            [1, 1],
+        ];
+        int[][] rookDirections =
+        [
+            [-1, 0],
+            [1, 0],
+            [0, -1],
+            [0, 1],
+        ];
+
+        Dictionary<PieceEnum, int[][]> directionsPerPiece = new()
+        {
+            { PieceEnum.BISHOP, bishopDirections },
+            { PieceEnum.ROOK, rookDirections },
+            { PieceEnum.QUEEN, [.. bishopDirections, .. rookDirections] },
+        };
+
+        int[][] directions = directionsPerPiece[myPiece.Value];
+
+        for (int i = 0; i < directions.Length; i++)
+        {
+            int r = myPiece.Row + directions[i][0];
+            int c = myPiece.Column + directions[i][1];
+
+            while (r >= 0 && r < 8 && c >= 0 && c < 8)
+            {
+                string position = $"{r}{c}";
+
+                if (piecesPerPosition.TryGetValue(position, out Piece? pieceAtPosition))
+                {
+                    if (pieceAtPosition.IsOponents(myPiece))
+                    {
+                        availablePositions.Add(position);
+                    }
+
+                    break;
+                }
+
+                availablePositions.Add(position);
+
+                r += directions[i][0];
+                c += directions[i][1];
             }
         }
 
