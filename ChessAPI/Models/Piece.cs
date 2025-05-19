@@ -6,7 +6,6 @@ namespace ChessAPI.Models;
 public class Piece
 {
     public int Id { get; set; }
-    public int MatchId { get; set; }
     public required Match Match { get; set; }
     public required PieceColorEnum Color { get; set; }
     public required PieceEnum Value { get; set; }

@@ -153,8 +153,7 @@ namespace ChessAPI.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("MatchId", "Row", "Column")
-                        .IsUnique();
+                    b.HasIndex("MatchId");
 
                     b.ToTable("Pieces");
                 });
