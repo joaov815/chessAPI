@@ -5,6 +5,7 @@ namespace ChessAPI.Data;
 
 public class AppDbContext(IConfiguration _configuration) : DbContext
 {
+    public DbSet<KingState> KingStates { get; set; }
     public DbSet<User> Users { get; set; }
     public DbSet<Match> Matches { get; set; }
     public DbSet<Piece> Pieces { get; set; }

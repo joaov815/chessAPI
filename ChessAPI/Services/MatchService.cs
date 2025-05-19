@@ -17,7 +17,8 @@ public class MatchService
         UserService userService,
         PieceService pieceService,
         MatchPieceHistoryService matchPieceHistoryService,
-        WebSocketConnectionManager manager
+        WebSocketConnectionManager manager,
+        KingStateService kingStateService
     )
     {
         Context = context;
@@ -27,6 +28,7 @@ public class MatchService
         _userService = userService;
         _pieceService = pieceService;
         _matchPieceHistoryService = matchPieceHistoryService;
+        _kingStateService = kingStateService;
         _manager = manager;
     }
 
@@ -38,28 +40,28 @@ public class MatchService
     private readonly UserService _userService;
     private readonly PieceService _pieceService;
     private readonly MatchPieceHistoryService _matchPieceHistoryService;
+    private readonly KingStateService _kingStateService;
 
     public async Task<Match> OnUserConnected(WebSocket webSocket, User user)
     {
         Match? myUnfinishedMatch = await GetMyUnfinishedMatch(user);
 
-        if (_manager.GetClient(user.Id) is null)
-        {
-            _manager.AddClient(webSocket, user);
-        }
         if (myUnfinishedMatch != null)
         {
-            _manager.SetClientMatchId(user.Id, myUnfinishedMatch.Id);
             List<Piece> pieces = await _pieceService.GetMatchActivePieces(myUnfinishedMatch.Id);
+
+            var myColor =
+                myUnfinishedMatch.BlackUser?.Id == user.Id
+                    ? PieceColorEnum.BLACK
+                    : PieceColorEnum.WHITE;
+
+            _manager.AddClient(webSocket, user, myUnfinishedMatch);
 
             await SocketUtils.SendMessage(
                 webSocket,
                 new MatchReconnectedDto
                 {
-                    Color =
-                        myUnfinishedMatch.BlackUser?.Id == user.Id
-                            ? PieceColorEnum.BLACK
-                            : PieceColorEnum.WHITE,
+                    Color = myColor,
                     Pieces = pieces,
                     BlackUsername = myUnfinishedMatch.BlackUser?.Username,
                     WhiteUsername = myUnfinishedMatch.WhiteUser?.Username,
@@ -74,13 +76,13 @@ public class MatchService
         if (match is null)
         {
             match = await CreateAsync(user);
+            _manager.AddClient(webSocket, user, match);
         }
         else
         {
+            _manager.AddClient(webSocket, user, match);
             await StartMatch(user, match);
         }
-
-        _manager.SetClientMatchId(user.Id, match.Id);
 
         return match!;
     }
@@ -131,12 +133,9 @@ public class MatchService
                     new MatchStartedResponseDto
                     {
                         Type = WsMessageTypeResponseEnum.MATCH_STARTED,
-                        Color =
-                            user.Id == match.BlackUser?.Id
-                                ? PieceColorEnum.BLACK
-                                : PieceColorEnum.WHITE,
-                        BlackUsername = match.BlackUser?.Username,
-                        WhiteUsername = match.WhiteUser?.Username,
+                        Color = c.Color,
+                        BlackUsername = match.BlackUser!.Username,
+                        WhiteUsername = match.WhiteUser!.Username,
                     }
                 )
             )
@@ -282,16 +281,13 @@ public class MatchService
         switch (piece.Value)
         {
             case PieceEnum.PAWN:
-                availablePositions = GetPawnAvailablePositions(piece, piecesPerPosition, lastMove);
-                break;
+                return GetPawnAvailablePositions(piece, piecesPerPosition, lastMove);
             case PieceEnum.BISHOP:
             case PieceEnum.ROOK:
             case PieceEnum.QUEEN:
-                availablePositions = GetBRQAvailablePositions(piece, piecesPerPosition);
-                break;
+                return GetBRQAvailablePositions(piece, piecesPerPosition);
             case PieceEnum.KNIGHT:
-                availablePositions = GetKnightAvailablePositions(piece, piecesPerPosition);
-                break;
+                return GetKnightAvailablePositions(piece, piecesPerPosition);
             case PieceEnum.KING:
                 // TODO:
                 break;
@@ -312,7 +308,7 @@ public class MatchService
         myPiece.Column = dto.ToColumn;
         myPiece.Row = dto.ToRow;
 
-        string possibleCapturePosition = myPiece.OnPassantCapturePosition ?? dto.ToPosition;
+        string possibleCapturePosition = myPiece.EnPassantCapturePosition ?? dto.ToPosition;
 
         piecesPerPosition.TryGetValue(possibleCapturePosition, out Piece? pieceAtTarget);
 
@@ -339,13 +335,38 @@ public class MatchService
 
         match.Rounds = round;
 
+        // // Checar influencia em rei adversário
+        // Piece OpponentKing = piecesPerPosition
+        //     .FirstOrDefault(p => p.Value.Value == PieceEnum.KING && p.Value.IsOponents(myPiece))
+        //     .Value!;
+
+        // KingState kingState = await _kingStateService.GetOpponentKing(match.Id, myPiece.Color);
+
+        // List<string> newAvailablePositions = GetAvailablePositions(
+        //     myPiece,
+        //     piecesPerPosition,
+        //     history
+        // );
+
+        // foreach (var pos in newAvailablePositions)
+        // {
+        //     if (
+        //         piecesPerPosition.TryGetValue(pos, out Piece? piece)
+        //         && piece.IsOponents(myPiece)
+        //         && piece.Value == PieceEnum.KING
+        //     )
+        //     {
+        //         // Check
+        //     }
+        // }
+
         await Context.SaveChangesAsync();
 
         MoveResponseDto response = new()
         {
             Type = WsMessageTypeResponseEnum.MOVE,
             History = history,
-            CapturedEnPassantPawn = myPiece.OnPassantCapturePosition,
+            CapturedEnPassantPawn = myPiece.EnPassantCapturePosition,
         };
 
         await _manager.SendMatchClients(match.Id, response);
@@ -414,7 +435,7 @@ public class MatchService
                     rowToCheck + (myPiece.IsWhite ? -1 : 1),
                     columnToCheck
                 );
-                myPiece.OnPassantCapturePosition = enPassantPos;
+                myPiece.EnPassantCapturePosition = enPassantPos;
             }
         }
 

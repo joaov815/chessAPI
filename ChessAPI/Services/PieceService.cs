@@ -7,16 +7,18 @@ namespace ChessAPI.Services;
 
 public class PieceService
 {
-    public PieceService(AppDbContext context)
+    public PieceService(AppDbContext context, KingStateService kingStateService)
     {
         Context = context;
         _dbSet = context.Set<Piece>();
         QueryBuilder = _dbSet.AsQueryable();
+        _kingStateService = kingStateService;
     }
 
     protected readonly DbSet<Piece> _dbSet;
     public AppDbContext Context { get; set; }
     public IQueryable<Piece> QueryBuilder { get; set; }
+    public KingStateService _kingStateService { get; set; }
 
     public List<Piece> SetInitialBoard(Match match)
     {
@@ -62,25 +64,32 @@ public class PieceService
             }
         }
 
+        List<Piece> kings = [];
         for (int i = 0; i < 4; i++)
         {
             bool isWhite = i < 2;
             bool isEven = i % 2 == 0;
 
-            pieces.Add(
-                new()
-                {
-                    Value = isEven ? PieceEnum.QUEEN : PieceEnum.KING,
-                    Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
-                    Column = isEven ? 3 : 4,
-                    Row = isWhite ? 0 : 7,
-                    WasCaptured = false,
-                    Match = match,
-                }
-            );
+            Piece piece = new()
+            {
+                Value = isEven ? PieceEnum.QUEEN : PieceEnum.KING,
+                Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
+                Column = isEven ? 3 : 4,
+                Row = isWhite ? 0 : 7,
+                WasCaptured = false,
+                Match = match,
+            };
+
+            pieces.Add(piece);
+
+            if (!isEven)
+            {
+                kings.Add(piece);
+            }
         }
 
         _dbSet.AddRange(pieces);
+        _kingStateService.AddKingsStates(kings);
 
         return pieces;
     }

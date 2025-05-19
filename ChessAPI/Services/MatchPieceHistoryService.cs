@@ -11,10 +11,7 @@ public class MatchPieceHistoryService
         Context = context;
         _dbSet = context.Set<MatchPieceHistory>();
         QueryBuilder = _dbSet.AsQueryable();
-        _manager = manager;
     }
-
-    private readonly WebSocketConnectionManager _manager;
 
     protected readonly DbSet<MatchPieceHistory> _dbSet;
     public AppDbContext Context { get; set; }

@@ -11,20 +11,21 @@ public sealed class WebSocketConnectionManager
 {
     private readonly ConcurrentDictionary<int, WsClient> _clients = new();
 
-    public void AddClient(WebSocket socket, User user)
+    public void AddClient(WebSocket socket, User user, Match match)
     {
-        _clients.TryAdd(user.Id, new() { Socket = socket, User = user });
-    }
+        PieceColorEnum color =
+            match.BlackUser?.Id == user.Id ? PieceColorEnum.BLACK : PieceColorEnum.WHITE;
 
-    public void SetClientMatchId(int userId, int matchId)
-    {
-        var client = GetClient(userId)!;
-
-        if (client != null)
-        {
-            client.MatchId = matchId;
-            _clients[userId] = client;
-        }
+        _clients.TryAdd(
+            user.Id,
+            new()
+            {
+                Socket = socket,
+                User = user,
+                Color = color,
+                MatchId = match.Id,
+            }
+        );
     }
 
     public WsClient? GetClient(int id)
@@ -56,6 +57,7 @@ public sealed class WebSocketConnectionManager
     public async Task HealthCheckAllAsync()
     {
         Console.WriteLine("----HealthCheckAllAsync-----");
+        Console.WriteLine(_clients.Count);
 
         List<int> deadSockets = [];
 

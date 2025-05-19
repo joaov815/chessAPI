@@ -14,7 +14,7 @@ public class Piece
     public required bool WasCaptured { get; set; } = false;
 
     [NotMapped]
-    public string? OnPassantCapturePosition { get; set; }
+    public string? EnPassantCapturePosition { get; set; }
 
     [NotMapped]
     public bool IsWhite
