@@ -290,7 +290,7 @@ public class MatchService
                 availablePositions = GetBRQAvailablePositions(piece, piecesPerPosition);
                 break;
             case PieceEnum.KNIGHT:
-                // TODO:
+                availablePositions = GetKnightAvailablePositions(piece, piecesPerPosition);
                 break;
             case PieceEnum.KING:
                 // TODO:
@@ -421,6 +421,50 @@ public class MatchService
         return availablePositions;
     }
 
+    public List<string> GetKnightAvailablePositions(
+        Piece myPiece,
+        Dictionary<string, Piece> piecesPerPosition
+    )
+    {
+        List<string> availablePositions = [];
+
+        int[][] directions =
+        [
+            [1, -2],
+            [2, -1],
+            [2, 1],
+            [1, 2],
+            [-1, 2],
+            [-2, 1],
+            [-2, -1],
+            [-1, -2],
+        ];
+
+        foreach (var direction in directions)
+        {
+            int r = myPiece.Row + direction[0];
+            int c = myPiece.Column + direction[1];
+            string position = $"{r}{c}";
+
+            if (
+                r < 0
+                || r > 8
+                || c < 0 && c > 8
+                || (
+                    piecesPerPosition.TryGetValue(position, out Piece? pieceAtPosition)
+                    && !pieceAtPosition.IsOponents(myPiece)
+                )
+            )
+            {
+                continue;
+            }
+
+            availablePositions.Add(position);
+        }
+
+        return availablePositions;
+    }
+
     public List<string> GetBRQAvailablePositions(
         Piece myPiece,
         Dictionary<string, Piece> piecesPerPosition
@@ -461,13 +505,11 @@ public class MatchService
             {
                 string position = $"{r}{c}";
 
-                if (piecesPerPosition.TryGetValue(position, out Piece? pieceAtPosition))
+                if (
+                    piecesPerPosition.TryGetValue(position, out Piece? pieceAtPosition)
+                    && !pieceAtPosition.IsOponents(myPiece)
+                )
                 {
-                    if (pieceAtPosition.IsOponents(myPiece))
-                    {
-                        availablePositions.Add(position);
-                    }
-
                     break;
                 }
 
