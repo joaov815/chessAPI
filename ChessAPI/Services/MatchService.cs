@@ -61,6 +61,8 @@ public class MatchService
                             ? PieceColorEnum.BLACK
                             : PieceColorEnum.WHITE,
                     Pieces = pieces,
+                    BlackUsername = myUnfinishedMatch.BlackUser?.Username,
+                    WhiteUsername = myUnfinishedMatch.WhiteUser?.Username,
                 }
             );
 
@@ -120,25 +122,44 @@ public class MatchService
 
         await Context.SaveChangesAsync();
 
-        WsClient whiteClient = _manager.GetClient(match.WhiteUser!.Id)!;
-        WsClient blackClient = _manager.GetClient(match.BlackUser!.Id)!;
+        List<WsClient> clients = _manager.GetMatchClients(match.Id);
 
-        await SocketUtils.SendMessage(
-            whiteClient.Socket,
-            new MatchStartedResponseDto
-            {
-                Type = WsMessageTypeResponseEnum.MATCH_STARTED,
-                Color = PieceColorEnum.WHITE,
-            }
+        await Task.WhenAll(
+            clients.Select(c =>
+                SocketUtils.SendMessage(
+                    c.Socket,
+                    new MatchStartedResponseDto
+                    {
+                        Type = WsMessageTypeResponseEnum.MATCH_STARTED,
+                        Color =
+                            user.Id == match.BlackUser?.Id
+                                ? PieceColorEnum.BLACK
+                                : PieceColorEnum.WHITE,
+                        BlackUsername = match.BlackUser?.Username,
+                        WhiteUsername = match.WhiteUser?.Username,
+                    }
+                )
+            )
         );
-        await SocketUtils.SendMessage(
-            blackClient.Socket,
-            new MatchStartedResponseDto
-            {
-                Type = WsMessageTypeResponseEnum.MATCH_STARTED,
-                Color = PieceColorEnum.BLACK,
-            }
-        );
+
+        // await SocketUtils.SendMessage(
+        //     whiteClient.Socket,
+        //     new MatchStartedResponseDto
+        //     {
+        //         Type = WsMessageTypeResponseEnum.MATCH_STARTED,
+        //         Color = PieceColorEnum.WHITE,
+        //         BlackUsername = match.BlackUser.Username,
+        //         WhiteUsername = match.WhiteUser.Username,
+        //     }
+        // );
+        // await SocketUtils.SendMessage(
+        //     blackClient.Socket,
+        //     new MatchStartedResponseDto
+        //     {
+        //         Type = WsMessageTypeResponseEnum.MATCH_STARTED,
+        //         Color = PieceColorEnum.BLACK,
+        //     }
+        // );
     }
 
     public async Task<Match?> GetMatchMakingMatch(User user)

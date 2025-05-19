@@ -12,4 +12,6 @@ public class MatchReconnectedDto : BaseResponseDto
 
     public required List<Piece> Pieces { get; set; }
     public required PieceColorEnum Color { get; set; }
+    public string? BlackUsername { get; set; }
+    public string? WhiteUsername { get; set; }
 }
