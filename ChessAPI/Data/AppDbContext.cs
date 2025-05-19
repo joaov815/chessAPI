@@ -25,5 +25,14 @@ public class AppDbContext(IConfiguration _configuration) : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<User>().HasIndex(u => u.Username).IsUnique();
+        modelBuilder
+            .Entity<Piece>()
+            .HasIndex(u => new
+            {
+                u.MatchId,
+                u.Row,
+                u.Column,
+            })
+            .IsUnique();
     }
 }

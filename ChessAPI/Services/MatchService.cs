@@ -55,7 +55,10 @@ public class MatchService
                     ? PieceColorEnum.BLACK
                     : PieceColorEnum.WHITE;
 
-            _manager.AddClient(webSocket, user, myUnfinishedMatch);
+            if (_manager.GetClient(user.Id) is null)
+            {
+                _manager.AddClient(webSocket, user, myUnfinishedMatch);
+            }
 
             await SocketUtils.SendMessage(
                 webSocket,
