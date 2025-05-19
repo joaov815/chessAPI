@@ -16,6 +16,17 @@ public sealed class WebSocketConnectionManager
         _clients.TryAdd(user.Id, new() { Socket = socket, User = user });
     }
 
+    public void SetClientMatchId(int userId, int matchId)
+    {
+        var client = GetClient(userId)!;
+
+        if (client != null)
+        {
+            client.MatchId = matchId;
+            _clients[userId] = client;
+        }
+    }
+
     public WsClient? GetClient(int id)
     {
         _clients.TryGetValue(id, out var client);
@@ -25,18 +36,19 @@ public sealed class WebSocketConnectionManager
 
     public async Task SendMatchClients(int matchId, object message)
     {
-        Task[] clients =
+        var clients = GetMatchClients(matchId);
+
+        Task[] clientsSend =
         [
-            .. GetMatchClients(matchId)
-                .Select(client => SocketUtils.SendMessage(client.Socket, message)),
+            .. clients.Select(client => SocketUtils.SendMessage(client.Socket, message)),
         ];
 
-        await Task.WhenAll(clients);
+        await Task.WhenAll(clientsSend);
     }
 
     public List<WsClient> GetMatchClients(int matchId)
     {
-        return [.. _clients.Select(_ => _.Value).Where(_ => _.Match?.Id == matchId)];
+        return [.. _clients.Select(_ => _.Value).Where(_ => _.MatchId == matchId)];
     }
 
     public IEnumerable<WsClient> GetAllClients() => _clients.Values;

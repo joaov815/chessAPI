@@ -49,6 +49,7 @@ public class MatchService
         }
         if (myUnfinishedMatch != null)
         {
+            _manager.SetClientMatchId(user.Id, myUnfinishedMatch.Id);
             List<Piece> pieces = await _pieceService.GetMatchActivePieces(myUnfinishedMatch.Id);
 
             await SocketUtils.SendMessage(
@@ -76,6 +77,8 @@ public class MatchService
         {
             await StartMatch(user, match);
         }
+
+        _manager.SetClientMatchId(user.Id, match.Id);
 
         return match!;
     }
@@ -212,7 +215,7 @@ public class MatchService
         PieceColorEnum opponentsColor =
             my.Color == PieceColorEnum.WHITE ? PieceColorEnum.BLACK : PieceColorEnum.WHITE;
 
-        List<string> availablePositions = GetPieceAvailablePositions(
+        List<string> availablePositions = GetAvailablePositions(
             myPiece,
             piecesPerPosition,
             lastMove
@@ -239,17 +242,23 @@ public class MatchService
     {
         Piece piece = await _pieceService.GetPieceByPositionAsync(my.MatchId, dto.Row, dto.Column);
         object response;
+        MatchPieceHistory? lastMove = await _matchPieceHistoryService.GetMatchLastPieceHistory(
+            my.MatchId
+        );
 
-        if (piece.Color == my.Color)
+        if (
+            piece.Color == my.Color
+            && (
+                (lastMove is null && my.Color == PieceColorEnum.WHITE)
+                || (lastMove != null && lastMove.Piece.Color != my.Color)
+            )
+        )
         {
             var piecesPerPosition = await _pieceService.GetMatchActivePiecesPerPosition(my.MatchId);
-            MatchPieceHistory? lastMove = await _matchPieceHistoryService.GetMatchLastPieceHistory(
-                my.MatchId
-            );
 
             response = new AvailablePositionsDto
             {
-                Positions = GetPieceAvailablePositions(piece, piecesPerPosition, lastMove),
+                Positions = GetAvailablePositions(piece, piecesPerPosition, lastMove),
             };
         }
         else
@@ -260,7 +269,7 @@ public class MatchService
         await SocketUtils.SendMessage(mySocket, response);
     }
 
-    private List<string> GetPieceAvailablePositions(
+    private List<string> GetAvailablePositions(
         Piece piece,
         Dictionary<string, Piece> piecesPerPosition,
         MatchPieceHistory? lastMove
@@ -306,7 +315,9 @@ public class MatchService
         myPiece.Column = dto.ToColumn;
         myPiece.Row = dto.ToRow;
 
-        piecesPerPosition.TryGetValue(dto.ToPosition, out Piece? pieceAtTarget);
+        string possibleCapturePosition = myPiece.OnPassantCapturePosition ?? dto.ToPosition;
+
+        piecesPerPosition.TryGetValue(possibleCapturePosition, out Piece? pieceAtTarget);
 
         if (pieceAtTarget != null)
         {
@@ -323,7 +334,7 @@ public class MatchService
                 CurrentColumn = dto.ToColumn,
                 CurrentRow = dto.ToRow,
                 PreviousColumn = dto.FromColumn,
-                PreviousRow = dto.FromColumn,
+                PreviousRow = dto.FromRow,
                 Match = match,
                 Round = round,
             }
@@ -336,7 +347,8 @@ public class MatchService
         MoveResponseDto response = new()
         {
             Type = WsMessageTypeResponseEnum.MOVE,
-            MatchPieceHistory = history,
+            History = history,
+            CapturedEnPassantPawn = myPiece.OnPassantCapturePosition,
         };
 
         await _manager.SendMatchClients(match.Id, response);
@@ -374,7 +386,7 @@ public class MatchService
             var columnToCheck = myPiece.Column + i;
 
             // Não posso pular pra fora do tabuleiro
-            if (columnToCheck + i > 7 || columnToCheck + i < 0)
+            if (columnToCheck > 7 || columnToCheck < 0)
             {
                 continue;
             }
@@ -396,10 +408,16 @@ public class MatchService
                 lastMove?.Piece.Value == PieceEnum.PAWN
                 && lastMove.CurrentColumn == columnToCheck
                 && lastMove.CurrentRow == myPiece.Row
+                && Math.Abs(lastMove.CurrentRow - lastMove.PreviousRow) == 2
             )
             {
                 // en passant
                 availablePositions.Add(positionToCheck);
+                var enPassantPos = ToPosition(
+                    rowToCheck + (myPiece.IsWhite ? -1 : 1),
+                    columnToCheck
+                );
+                myPiece.OnPassantCapturePosition = enPassantPos;
             }
         }
 

@@ -4,5 +4,6 @@ namespace ChessAPI.Dtos.Response;
 
 public class MoveResponseDto : BaseResponseDto
 {
-    public required MatchPieceHistory MatchPieceHistory;
+    public required MatchPieceHistory History { get; set; }
+    public string? CapturedEnPassantPawn { get; set; }
 }
