@@ -1,5 +1,4 @@
 using System.Net.WebSockets;
-using System.Text.Json;
 using ChessAPI.Data;
 using ChessAPI.Dtos;
 using ChessAPI.Dtos.Response;
@@ -216,7 +215,7 @@ public class MatchService
         PieceColorEnum opponentsColor =
             my.Color == PieceColorEnum.WHITE ? PieceColorEnum.BLACK : PieceColorEnum.WHITE;
 
-        List<string> availablePositions = GetAvailablePositions(
+        List<string> availablePositions = await GetAvailablePositions(
             myPiece,
             piecesPerPosition,
             lastMove
@@ -259,7 +258,7 @@ public class MatchService
 
             response = new AvailablePositionsDto
             {
-                Positions = GetAvailablePositions(piece, piecesPerPosition, lastMove),
+                Positions = await GetAvailablePositions(piece, piecesPerPosition, lastMove),
             };
         }
         else
@@ -270,32 +269,40 @@ public class MatchService
         await SocketUtils.SendMessage(mySocket, response);
     }
 
-    private List<string> GetAvailablePositions(
+    private async Task<List<string>> GetAvailablePositions(
         Piece piece,
         Dictionary<string, Piece> piecesPerPosition,
         MatchPieceHistory? lastMove
     )
     {
-        List<string> availablePositions = [];
-
-        switch (piece.Value)
+        return piece.Value switch
         {
-            case PieceEnum.PAWN:
-                return GetPawnAvailablePositions(piece, piecesPerPosition, lastMove);
-            case PieceEnum.BISHOP:
-            case PieceEnum.ROOK:
-            case PieceEnum.QUEEN:
-                return GetBRQAvailablePositions(piece, piecesPerPosition);
-            case PieceEnum.KNIGHT:
-                return GetKnightAvailablePositions(piece, piecesPerPosition);
-            case PieceEnum.KING:
-                // TODO:
-                break;
-            default:
-                throw new Exception("INVALID PIECE");
-        }
+            PieceEnum.PAWN => GetPawnAvailablePositions(piece, piecesPerPosition, lastMove),
+            PieceEnum.BISHOP or PieceEnum.ROOK or PieceEnum.QUEEN => GetBRQAvailablePositions(
+                piece,
+                piecesPerPosition
+            ),
+            PieceEnum.KNIGHT => GetKnightAvailablePositions(piece, piecesPerPosition),
+            PieceEnum.KING => await GetKingAvailablePositions(piece.Id, piecesPerPosition),
+            _ => throw new Exception("INVALID PIECE"),
+        };
+    }
 
-        return availablePositions;
+    public async Task<List<string>> GetKingAvailablePositions(
+        int pieceId,
+        Dictionary<string, Piece> piecesPerPosition
+    )
+    {
+        var king = await _kingStateService.GetByPieceId(pieceId);
+
+        // TODO: Add Castle move
+
+        return
+        [
+            .. king.NonEnemyPositions.Where(position =>
+                !piecesPerPosition.TryGetValue(position, out _)
+            ),
+        ];
     }
 
     public async Task Move(
@@ -335,30 +342,17 @@ public class MatchService
 
         match.Rounds = round;
 
-        // // Checar influencia em rei adversário
-        // Piece OpponentKing = piecesPerPosition
-        //     .FirstOrDefault(p => p.Value.Value == PieceEnum.KING && p.Value.IsOponents(myPiece))
-        //     .Value!;
+        KingState opponentKing = await _kingStateService.GetOpponentKing(match.Id, myPiece.Color);
+        List<string> newAvailablePositions = await GetAvailablePositions(
+            myPiece,
+            piecesPerPosition,
+            history
+        );
 
-        // KingState kingState = await _kingStateService.GetOpponentKing(match.Id, myPiece.Color);
-
-        // List<string> newAvailablePositions = GetAvailablePositions(
-        //     myPiece,
-        //     piecesPerPosition,
-        //     history
-        // );
-
-        // foreach (var pos in newAvailablePositions)
-        // {
-        //     if (
-        //         piecesPerPosition.TryGetValue(pos, out Piece? piece)
-        //         && piece.IsOponents(myPiece)
-        //         && piece.Value == PieceEnum.KING
-        //     )
-        //     {
-        //         // Check
-        //     }
-        // }
+        opponentKing.OpponentPositionsAround =
+        [
+            .. newAvailablePositions.Where(opponentKing.PositionsAround.Contains),
+        ];
 
         await Context.SaveChangesAsync();
 

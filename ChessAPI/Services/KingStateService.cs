@@ -18,6 +18,12 @@ public class KingStateService
     public AppDbContext Context { get; set; }
     public IQueryable<KingState> QueryBuilder { get; set; }
 
+    public async Task<KingState> GetByPieceId(int pieceId)
+    {
+        return await QueryBuilder.FirstOrDefaultAsync(_ => _.Piece.Id == pieceId)
+            ?? throw new Exception("NOT FOUND");
+    }
+
     public async Task<KingState> GetOpponentKing(int matchId, PieceColorEnum pieceColor)
     {
         return await QueryBuilder
