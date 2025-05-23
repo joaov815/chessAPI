@@ -191,14 +191,13 @@ public class MatchService(
         }
         else
         {
-            manager.AddClient(webSocket, user, match);
-            await StartMatch(user, match, context);
+            await StartMatch(webSocket, user, match, context);
         }
 
         return match!;
     }
 
-    private async Task StartMatch(User user, Match match, AppDbContext context)
+    private async Task StartMatch(WebSocket webSocket, User user, Match match, AppDbContext context)
     {
         match.SetSecondPlayer(user);
         match.StartedAt = DateTime.UtcNow;
@@ -207,6 +206,8 @@ public class MatchService(
         pieceRepository.SetInitialBoard(match, context);
 
         await context.SaveChangesAsync();
+
+        manager.AddClient(webSocket, user, match);
 
         List<WsClient> clients = manager.GetMatchClients(match.Id);
 

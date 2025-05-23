@@ -21,7 +21,7 @@ public class MatchRepository(AppDbContext context) : BaseRepository<Match>(conte
 
         var random = new Random();
 
-        if (random.Next(0, 1) == 1)
+        if (random.Next(0, 2) == 0)
         {
             match.WhiteUser = user;
         }

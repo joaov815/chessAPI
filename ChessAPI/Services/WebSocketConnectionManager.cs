@@ -14,7 +14,7 @@ public sealed class WebSocketConnectionManager
     public void AddClient(WebSocket socket, User user, Match match)
     {
         PieceColorEnum color =
-            match.BlackUser?.Id == user.Id ? PieceColorEnum.BLACK : PieceColorEnum.WHITE;
+            (match.BlackUser?.Id == user.Id) ? PieceColorEnum.BLACK : PieceColorEnum.WHITE;
 
         _clients.TryAdd(
             user.Id,
