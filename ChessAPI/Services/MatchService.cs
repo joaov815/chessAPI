@@ -376,6 +376,31 @@ public class MatchService(
 
         if (myPiece.Value == PieceEnum.KING)
         {
+            int squaresMoved = dto.FromColumn - dto.ToColumn;
+            bool isCastleMove = Math.Abs(squaresMoved) == 2;
+
+            if (isCastleMove)
+            {
+                bool isKCastle = squaresMoved < 0;
+
+                Piece rook = piecesPerPosition
+                    .FirstOrDefault(_ =>
+                        _.Value.Color == myPiece.Color
+                        && (
+                            isKCastle
+                                ? _.Value.InitialBoardSide == BoardSideEnum.KING
+                                : _.Value.InitialBoardSide == BoardSideEnum.QUEEN
+                        )
+                        && _.Value.Value == PieceEnum.ROOK
+                    )
+                    .Value;
+                rook.Column = isKCastle ? 5 : 3;
+
+                context.Update(rook);
+
+                // TODO: Chamar List<string> newAvailablePositions = await GetAvailablePositions(
+            }
+
             KingState myKing = await kingStateRepository.GetByPieceId(myPiece.Id, context);
             myKing.PositionsAround = PositionUtils.GetPositionsAround(myPiece);
         }
