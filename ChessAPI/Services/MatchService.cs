@@ -4,174 +4,33 @@ using ChessAPI.Dtos;
 using ChessAPI.Dtos.Response;
 using ChessAPI.Enums;
 using ChessAPI.Models;
+using ChessAPI.Repositories;
 using ChessAPI.Utils;
 using Microsoft.EntityFrameworkCore;
 
 namespace ChessAPI.Services;
 
-public class MatchService
+public class MatchService(
+    IServiceProvider serviceProvider,
+    MatchRepository matchRepository,
+    UserRepository userRepository,
+    PieceRepository pieceRepository,
+    MatchPieceHistoryRepository matchPieceHistoryRepository,
+    WebSocketConnectionManager manager,
+    KingStateRepository kingStateRepository
+)
 {
-    public MatchService(
-        AppDbContext context,
-        UserService userService,
-        PieceService pieceService,
-        MatchPieceHistoryService matchPieceHistoryService,
-        WebSocketConnectionManager manager,
-        KingStateService kingStateService
-    )
-    {
-        Context = context;
-        _dbSet = context.Set<Match>();
-        QueryBuilder = _dbSet.AsQueryable();
-
-        _userService = userService;
-        _pieceService = pieceService;
-        _matchPieceHistoryService = matchPieceHistoryService;
-        _kingStateService = kingStateService;
-        _manager = manager;
-    }
-
-    private readonly WebSocketConnectionManager _manager;
-
-    protected readonly DbSet<Match> _dbSet;
-    public AppDbContext Context { get; set; }
-    public IQueryable<Match> QueryBuilder { get; set; }
-    private readonly UserService _userService;
-    private readonly PieceService _pieceService;
-    private readonly MatchPieceHistoryService _matchPieceHistoryService;
-    private readonly KingStateService _kingStateService;
-
-    public async Task<Match> OnUserConnected(WebSocket webSocket, User user)
-    {
-        Match? myUnfinishedMatch = await GetMyUnfinishedMatch(user);
-
-        if (myUnfinishedMatch != null)
-        {
-            List<Piece> pieces = await _pieceService.GetMatchActivePieces(myUnfinishedMatch.Id);
-
-            var myColor =
-                myUnfinishedMatch.BlackUser?.Id == user.Id
-                    ? PieceColorEnum.BLACK
-                    : PieceColorEnum.WHITE;
-
-            _manager.AddClient(webSocket, user, myUnfinishedMatch);
-
-            await SocketUtils.SendMessage(
-                webSocket,
-                new MatchReconnectedDto
-                {
-                    Color = myColor,
-                    Pieces = pieces,
-                    BlackUsername = myUnfinishedMatch.BlackUser?.Username,
-                    WhiteUsername = myUnfinishedMatch.WhiteUser?.Username,
-                }
-            );
-
-            return myUnfinishedMatch;
-        }
-
-        Match? match = await GetMatchMakingMatch(user);
-
-        if (match is null)
-        {
-            match = await CreateAsync(user);
-            _manager.AddClient(webSocket, user, match);
-        }
-        else
-        {
-            _manager.AddClient(webSocket, user, match);
-            await StartMatch(user, match);
-        }
-
-        return match!;
-    }
-
-    public async Task<Match> CreateAsync(User user)
-    {
-        Match match = new()
-        {
-            Status = MatchStatusEnum.MATCHMAKING,
-            SecondsDuration = 10 * 1000,
-            Rounds = 0,
-        };
-
-        var random = new Random();
-
-        if (random.Next(0, 1) == 1)
-        {
-            match.WhiteUser = user;
-        }
-        else
-        {
-            match.BlackUser = user;
-        }
-
-        _dbSet.Add(match);
-
-        await Context.SaveChangesAsync();
-
-        return match;
-    }
-
-    public async Task StartMatch(User user, Match match)
-    {
-        match.SetSecondPlayer(user);
-        match.StartedAt = DateTime.UtcNow;
-        match.Status = MatchStatusEnum.ONGOING;
-
-        _pieceService.SetInitialBoard(match);
-
-        await Context.SaveChangesAsync();
-
-        List<WsClient> clients = _manager.GetMatchClients(match.Id);
-
-        await Task.WhenAll(
-            clients.Select(c =>
-                SocketUtils.SendMessage(
-                    c.Socket,
-                    new MatchStartedResponseDto
-                    {
-                        Type = WsMessageTypeResponseEnum.MATCH_STARTED,
-                        Color = c.Color,
-                        BlackUsername = match.BlackUser!.Username,
-                        WhiteUsername = match.WhiteUser!.Username,
-                    }
-                )
-            )
-        );
-    }
-
-    public async Task<Match?> GetMatchMakingMatch(User user)
-    {
-        return await QueryBuilder
-            .Include(_ => _.BlackUser)
-            .Include(_ => _.WhiteUser)
-            .FirstOrDefaultAsync(m =>
-                m.Status == MatchStatusEnum.MATCHMAKING
-                && (m.BlackUser == null || m.BlackUser.Id != user.Id)
-                && (m.WhiteUser == null || m.WhiteUser.Id != user.Id)
-            );
-    }
-
-    public async Task<Match?> GetMyUnfinishedMatch(User user)
-    {
-        return await QueryBuilder
-            .Include(_ => _.BlackUser)
-            .Include(_ => _.WhiteUser)
-            .FirstOrDefaultAsync(m =>
-                (m.Status == MatchStatusEnum.ONGOING || m.Status == MatchStatusEnum.MATCHMAKING)
-                && (
-                    (m.BlackUser != null && m.BlackUser.Id == user.Id)
-                    || (m.WhiteUser != null && m.WhiteUser.Id == user.Id)
-                )
-            );
-    }
-
     public async Task<MatchMakingResponseDto> OnMatchMaking(WebSocket webSocket, WsMessageDto dto)
     {
-        User user = await _userService.CreateIfNotExistsAsync(new() { Username = dto.Username });
+        using var scope = serviceProvider.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        var match = await OnUserConnected(webSocket, user);
+        User user = await userRepository.CreateIfNotExistsAsync(
+            new() { Username = dto.Username },
+            context
+        );
+
+        var match = await OnUserConnected(context, webSocket, user);
 
         return new MatchMakingResponseDto
         {
@@ -188,16 +47,20 @@ public class MatchService
             return;
         }
 
-        Match match =
-            await QueryBuilder.FirstOrDefaultAsync(
-                (_) => _.Id == my.MatchId && _.Status == MatchStatusEnum.ONGOING
-            ) ?? throw new Exception("Not found");
+        using var scope = serviceProvider.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
-        MatchPieceHistory? lastMove = await _matchPieceHistoryService.GetMatchLastPieceHistory(
-            my.MatchId
+        Match match = await matchRepository.GetOngoingByIdAsync(my.MatchId, context);
+
+        MatchPieceHistory? lastMove = await matchPieceHistoryRepository.GetMatchLastPieceHistory(
+            my.MatchId,
+            context
         );
 
-        var piecesPerPosition = await _pieceService.GetMatchActivePiecesPerPosition(my.MatchId);
+        var piecesPerPosition = await pieceRepository.GetMatchActivePiecesPerPosition(
+            my.MatchId,
+            context
+        );
 
         Piece? myPiece = piecesPerPosition.FirstOrDefault((p) => p.Key == dto.FromPosition).Value;
 
@@ -218,12 +81,13 @@ public class MatchService
         List<string> availablePositions = await GetAvailablePositions(
             myPiece,
             piecesPerPosition,
-            lastMove
+            lastMove,
+            context
         );
 
         if (availablePositions.Contains(dto.ToPosition))
         {
-            await Move(match, myPiece, dto, piecesPerPosition);
+            await Move(match, myPiece, dto, piecesPerPosition, context);
         }
         else
         {
@@ -240,10 +104,19 @@ public class MatchService
         GetPiecePositionsDto dto
     )
     {
-        Piece piece = await _pieceService.GetPieceByPositionAsync(my.MatchId, dto.Row, dto.Column);
+        using var scope = serviceProvider.CreateScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        Piece piece = await pieceRepository.GetPieceByPositionAsync(
+            my.MatchId,
+            dto.Row,
+            dto.Column,
+            context
+        );
         object response;
-        MatchPieceHistory? lastMove = await _matchPieceHistoryService.GetMatchLastPieceHistory(
-            my.MatchId
+        MatchPieceHistory? lastMove = await matchPieceHistoryRepository.GetMatchLastPieceHistory(
+            my.MatchId,
+            context
         );
 
         if (
@@ -254,11 +127,19 @@ public class MatchService
             )
         )
         {
-            var piecesPerPosition = await _pieceService.GetMatchActivePiecesPerPosition(my.MatchId);
+            var piecesPerPosition = await pieceRepository.GetMatchActivePiecesPerPosition(
+                my.MatchId,
+                context
+            );
 
             response = new AvailablePositionsDto
             {
-                Positions = await GetAvailablePositions(piece, piecesPerPosition, lastMove),
+                Positions = await GetAvailablePositions(
+                    piece,
+                    piecesPerPosition,
+                    lastMove,
+                    context
+                ),
             };
         }
         else
@@ -269,10 +150,87 @@ public class MatchService
         await SocketUtils.SendMessage(mySocket, response);
     }
 
+    private async Task<Match> OnUserConnected(AppDbContext context, WebSocket webSocket, User user)
+    {
+        Match? myUnfinishedMatch = await matchRepository.GetMyUnfinishedMatch(user, context);
+
+        if (myUnfinishedMatch != null)
+        {
+            List<Piece> pieces = await pieceRepository.GetMatchActivePieces(
+                myUnfinishedMatch.Id,
+                context
+            );
+
+            var myColor =
+                myUnfinishedMatch.BlackUser?.Id == user.Id
+                    ? PieceColorEnum.BLACK
+                    : PieceColorEnum.WHITE;
+
+            manager.AddClient(webSocket, user, myUnfinishedMatch);
+
+            await SocketUtils.SendMessage(
+                webSocket,
+                new MatchReconnectedDto
+                {
+                    Color = myColor,
+                    Pieces = pieces,
+                    BlackUsername = myUnfinishedMatch.BlackUser?.Username,
+                    WhiteUsername = myUnfinishedMatch.WhiteUser?.Username,
+                }
+            );
+
+            return myUnfinishedMatch;
+        }
+
+        Match? match = await matchRepository.GetMatchMakingMatch(user, context);
+
+        if (match is null)
+        {
+            match = await matchRepository.CreateAsync(user, context);
+            manager.AddClient(webSocket, user, match);
+        }
+        else
+        {
+            manager.AddClient(webSocket, user, match);
+            await StartMatch(user, match, context);
+        }
+
+        return match!;
+    }
+
+    private async Task StartMatch(User user, Match match, AppDbContext context)
+    {
+        match.SetSecondPlayer(user);
+        match.StartedAt = DateTime.UtcNow;
+        match.Status = MatchStatusEnum.ONGOING;
+
+        pieceRepository.SetInitialBoard(match, context);
+
+        await context.SaveChangesAsync();
+
+        List<WsClient> clients = manager.GetMatchClients(match.Id);
+
+        await Task.WhenAll(
+            clients.Select(c =>
+                SocketUtils.SendMessage(
+                    c.Socket,
+                    new MatchStartedResponseDto
+                    {
+                        Type = WsMessageTypeResponseEnum.MATCH_STARTED,
+                        Color = c.Color,
+                        BlackUsername = match.BlackUser!.Username,
+                        WhiteUsername = match.WhiteUser!.Username,
+                    }
+                )
+            )
+        );
+    }
+
     private async Task<List<string>> GetAvailablePositions(
         Piece piece,
         Dictionary<string, Piece> piecesPerPosition,
-        MatchPieceHistory? lastMove
+        MatchPieceHistory? lastMove,
+        AppDbContext context
     )
     {
         return piece.Value switch
@@ -283,17 +241,18 @@ public class MatchService
                 piecesPerPosition
             ),
             PieceEnum.KNIGHT => GetKnightAvailablePositions(piece, piecesPerPosition),
-            PieceEnum.KING => await GetKingAvailablePositions(piece.Id, piecesPerPosition),
+            PieceEnum.KING => await GetKingAvailablePositions(piece.Id, piecesPerPosition, context),
             _ => throw new Exception("INVALID PIECE"),
         };
     }
 
     public async Task<List<string>> GetKingAvailablePositions(
         int pieceId,
-        Dictionary<string, Piece> piecesPerPosition
+        Dictionary<string, Piece> piecesPerPosition,
+        AppDbContext currentContext
     )
     {
-        var king = await _kingStateService.GetByPieceId(pieceId);
+        var king = await kingStateRepository.GetByPieceId(pieceId, currentContext);
 
         // TODO: Add Castle move
 
@@ -309,7 +268,8 @@ public class MatchService
         Match match,
         Piece myPiece,
         WsMovePieceDto dto,
-        Dictionary<string, Piece> piecesPerPosition
+        Dictionary<string, Piece> piecesPerPosition,
+        AppDbContext context
     )
     {
         myPiece.Column = dto.ToColumn;
@@ -326,7 +286,7 @@ public class MatchService
 
         ushort round = (ushort)(myPiece.IsWhite ? match.Rounds + 1 : match.Rounds);
 
-        var history = _matchPieceHistoryService.Save(
+        var history = matchPieceHistoryRepository.Save(
             new()
             {
                 Piece = myPiece,
@@ -337,16 +297,22 @@ public class MatchService
                 PreviousRow = dto.FromRow,
                 Match = match,
                 Round = round,
-            }
+            },
+            context
         );
 
         match.Rounds = round;
 
-        KingState opponentKing = await _kingStateService.GetOpponentKing(match.Id, myPiece.Color);
+        KingState opponentKing = await kingStateRepository.GetOpponentKing(
+            match.Id,
+            myPiece.Color,
+            context
+        );
         List<string> newAvailablePositions = await GetAvailablePositions(
             myPiece,
             piecesPerPosition,
-            history
+            history,
+            context
         );
 
         opponentKing.OpponentPositionsAround =
@@ -354,7 +320,7 @@ public class MatchService
             .. newAvailablePositions.Where(opponentKing.PositionsAround.Contains),
         ];
 
-        await Context.SaveChangesAsync();
+        await context.SaveChangesAsync();
 
         MoveResponseDto response = new()
         {
@@ -363,10 +329,10 @@ public class MatchService
             CapturedEnPassantPawn = myPiece.EnPassantCapturePosition,
         };
 
-        await _manager.SendMatchClients(match.Id, response);
+        await manager.SendMatchClients(match.Id, response);
     }
 
-    public List<string> GetPawnAvailablePositions(
+    private static List<string> GetPawnAvailablePositions(
         Piece myPiece,
         Dictionary<string, Piece> piecesPerPosition,
         MatchPieceHistory? lastMove
@@ -436,7 +402,7 @@ public class MatchService
         return availablePositions;
     }
 
-    public List<string> GetKnightAvailablePositions(
+    private static List<string> GetKnightAvailablePositions(
         Piece myPiece,
         Dictionary<string, Piece> piecesPerPosition
     )
@@ -480,7 +446,7 @@ public class MatchService
         return availablePositions;
     }
 
-    public List<string> GetBRQAvailablePositions(
+    private static List<string> GetBRQAvailablePositions(
         Piece myPiece,
         Dictionary<string, Piece> piecesPerPosition
     )
@@ -520,11 +486,12 @@ public class MatchService
             {
                 string position = $"{r}{c}";
 
-                if (
-                    piecesPerPosition.TryGetValue(position, out Piece? pieceAtPosition)
-                    && !pieceAtPosition.IsOponents(myPiece)
-                )
+                if (piecesPerPosition.TryGetValue(position, out Piece? pieceAtPosition))
                 {
+                    if (pieceAtPosition.IsOponents(myPiece))
+                    {
+                        availablePositions.Add(position);
+                    }
                     break;
                 }
 
@@ -538,7 +505,7 @@ public class MatchService
         return availablePositions;
     }
 
-    public string ToPosition(int row, int column)
+    private static string ToPosition(int row, int column)
     {
         return $"{row}{column}";
     }

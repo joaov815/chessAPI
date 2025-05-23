@@ -14,22 +14,16 @@ namespace ChessAPI.Controllers;
 [Route("/ws")]
 public sealed class GameController : ControllerBase
 {
-    public GameController(
-        WebSocketConnectionManager manager,
-        MatchService matchService,
-        UserService userService
-    )
+    public GameController(WebSocketConnectionManager manager, MatchService matchService)
     {
         _manager = manager;
         _matchService = matchService;
-        _userService = userService;
 
         _ = CheckClients();
     }
 
     private readonly WebSocketConnectionManager _manager;
     private readonly MatchService _matchService;
-    private readonly UserService _userService;
 
     private async Task CheckClients()
     {

@@ -3,24 +3,12 @@ using ChessAPI.Enums;
 using ChessAPI.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace ChessAPI.Services;
+namespace ChessAPI.Repositories;
 
-public class PieceService
+public class PieceRepository(AppDbContext context, KingStateRepository kingStateRepository)
+    : BaseRepository<Piece>(context)
 {
-    public PieceService(AppDbContext context, KingStateService kingStateService)
-    {
-        Context = context;
-        _dbSet = context.Set<Piece>();
-        QueryBuilder = _dbSet.AsQueryable();
-        _kingStateService = kingStateService;
-    }
-
-    protected readonly DbSet<Piece> _dbSet;
-    public AppDbContext Context { get; set; }
-    public IQueryable<Piece> QueryBuilder { get; set; }
-    public KingStateService _kingStateService { get; set; }
-
-    public List<Piece> SetInitialBoard(Match match)
+    public List<Piece> SetInitialBoard(Match match, AppDbContext? currentContext)
     {
         List<Piece> pieces = [];
 
@@ -88,30 +76,45 @@ public class PieceService
             }
         }
 
-        _dbSet.AddRange(pieces);
-        _kingStateService.AddKingsStates(kings);
+        var _context = currentContext ?? Context;
+        var dbSet = GetDbSet(_context);
+
+        dbSet.AddRange(pieces);
+        kingStateRepository.AddKingsStates(kings, _context);
 
         return pieces;
     }
 
-    public async Task<Piece> GetPieceByPositionAsync(int matchId, int row, int column)
+    public async Task<Piece> GetPieceByPositionAsync(
+        int matchId,
+        int row,
+        int column,
+        AppDbContext? currentContext
+    )
     {
+        var query = GetQueryBuilder(currentContext ?? Context);
+
         Piece piece =
-            await QueryBuilder.FirstOrDefaultAsync(_ =>
+            await query.FirstOrDefaultAsync(_ =>
                 _.Match.Id == matchId && _.Row == row && _.Column == column && !_.WasCaptured
             ) ?? throw new Exception("Not Found piece");
 
         return piece;
     }
 
-    public async Task<List<Piece>> GetMatchActivePieces(int matchId)
+    public async Task<List<Piece>> GetMatchActivePieces(int matchId, AppDbContext? currentContext)
     {
-        return await QueryBuilder.Where(_ => _.Match.Id == matchId && !_.WasCaptured).ToListAsync();
+        var query = GetQueryBuilder(currentContext ?? Context);
+
+        return await query.Where(_ => _.Match.Id == matchId && !_.WasCaptured).ToListAsync();
     }
 
-    public async Task<Dictionary<string, Piece>> GetMatchActivePiecesPerPosition(int matchId)
+    public async Task<Dictionary<string, Piece>> GetMatchActivePiecesPerPosition(
+        int matchId,
+        AppDbContext? currentContext
+    )
     {
-        var pieces = await GetMatchActivePieces(matchId);
+        var pieces = await GetMatchActivePieces(matchId, currentContext);
 
         return pieces.ToDictionary(_ => _.Position);
     }

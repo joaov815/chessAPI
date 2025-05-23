@@ -1,4 +1,5 @@
 using ChessAPI.Data;
+using ChessAPI.Repositories;
 using ChessAPI.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -13,10 +14,11 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"))
 );
 
-builder.Services.AddScoped<KingStateService>();
-builder.Services.AddScoped<MatchPieceHistoryService>();
-builder.Services.AddScoped<UserService>();
-builder.Services.AddScoped<PieceService>();
+builder.Services.AddScoped<KingStateRepository>();
+builder.Services.AddScoped<MatchPieceHistoryRepository>();
+builder.Services.AddScoped<MatchRepository>();
+builder.Services.AddScoped<PieceRepository>();
+builder.Services.AddScoped<UserRepository>();
 builder.Services.AddScoped<MatchService>();
 builder.Services.AddSingleton<WebSocketConnectionManager>();
 

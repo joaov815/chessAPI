@@ -3,37 +3,36 @@ using ChessAPI.Enums;
 using ChessAPI.Models;
 using Microsoft.EntityFrameworkCore;
 
-namespace ChessAPI.Services;
+namespace ChessAPI.Repositories;
 
-public class KingStateService
+public class KingStateRepository(AppDbContext context) : BaseRepository<KingState>(context)
 {
-    public KingStateService(AppDbContext context)
+    public async Task<KingState> GetByPieceId(int pieceId, AppDbContext? currentContext)
     {
-        Context = context;
-        _dbSet = context.Set<KingState>();
-        QueryBuilder = _dbSet.AsQueryable();
-    }
+        var query = GetQueryBuilder(currentContext ?? Context);
 
-    protected readonly DbSet<KingState> _dbSet;
-    public AppDbContext Context { get; set; }
-    public IQueryable<KingState> QueryBuilder { get; set; }
-
-    public async Task<KingState> GetByPieceId(int pieceId)
-    {
-        return await QueryBuilder.FirstOrDefaultAsync(_ => _.Piece.Id == pieceId)
+        return await query.FirstOrDefaultAsync(_ => _.Piece.Id == pieceId)
             ?? throw new Exception("NOT FOUND");
     }
 
-    public async Task<KingState> GetOpponentKing(int matchId, PieceColorEnum pieceColor)
+    public async Task<KingState> GetOpponentKing(
+        int matchId,
+        PieceColorEnum pieceColor,
+        AppDbContext? currentContext
+    )
     {
-        return await QueryBuilder
+        var query = GetQueryBuilder(currentContext ?? Context);
+
+        return await query
                 .Include(k => k.Piece)
                 .Where((k) => k.Piece.Match.Id == matchId && k.Piece.Color != pieceColor)
                 .FirstOrDefaultAsync() ?? throw new Exception("NOT FOUND");
     }
 
-    public void AddKingsStates(List<Piece> kings)
+    public void AddKingsStates(List<Piece> kings, AppDbContext? currentContext)
     {
+        var _dbSet = GetDbSet(currentContext ?? Context);
+
         _dbSet.AddRange(
             kings.Select(piece => new KingState()
             {
