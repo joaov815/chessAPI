@@ -1,6 +1,7 @@
 using ChessAPI.Data;
 using ChessAPI.Enums;
 using ChessAPI.Models;
+using ChessAPI.Utils;
 using Microsoft.EntityFrameworkCore;
 
 namespace ChessAPI.Repositories;
@@ -11,7 +12,7 @@ public class KingStateRepository(AppDbContext context) : BaseRepository<KingStat
     {
         var query = GetQueryBuilder(currentContext ?? Context);
 
-        return await query.FirstOrDefaultAsync(_ => _.Piece.Id == pieceId)
+        return await query.Include(_ => _.Piece).FirstOrDefaultAsync(_ => _.Piece.Id == pieceId)
             ?? throw new Exception("NOT FOUND");
     }
 
@@ -34,34 +35,14 @@ public class KingStateRepository(AppDbContext context) : BaseRepository<KingStat
         var _dbSet = GetDbSet(currentContext ?? Context);
 
         _dbSet.AddRange(
-            kings.Select(piece => new KingState()
-            {
-                OpponentPositionsAround = [],
-                Piece = piece,
-                PositionsAround = GetPositionsAround(piece),
-            })
+            kings
+                .Select(piece => new KingState()
+                {
+                    OpponentPositionsAround = [],
+                    Piece = piece,
+                    PositionsAround = PositionUtils.GetPositionsAround(piece),
+                })
+                .ToList()
         );
-    }
-
-    private static List<string> GetPositionsAround(Piece piece)
-    {
-        int[][] directions =
-        [
-            [-1, -1],
-            [1, -1],
-            [-1, 1],
-            [1, 1],
-            [-1, 0],
-            [1, 0],
-            [0, -1],
-            [0, 1],
-        ];
-
-        return
-        [
-            .. directions.Select(direction =>
-                $"{piece.Row + direction[0]}{piece.Column + direction[1]}"
-            ),
-        ];
     }
 }

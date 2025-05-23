@@ -16,6 +16,7 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
         {
             bool isWhite = i < 8;
             int column = i < 8 ? i : i - 8;
+            BoardSideEnum side = column < 4 ? BoardSideEnum.QUEEN : BoardSideEnum.KING;
 
             pieces.Add(
                 new()
@@ -26,6 +27,7 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
                     Row = isWhite ? 1 : 6,
                     WasCaptured = false,
                     Match = match,
+                    InitialBoardSide = side,
                 }
             );
         }
@@ -37,16 +39,19 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
             for (int i = 0; i < 4; i++)
             {
                 bool isWhite = i < 2;
+                int column = i % 2 == 0 ? j : (7 - j);
+                BoardSideEnum side = column < 4 ? BoardSideEnum.QUEEN : BoardSideEnum.KING;
 
                 pieces.Add(
                     new()
                     {
                         Value = piecesValues[j],
-                        Column = i % 2 == 0 ? j : (7 - j),
+                        Column = column,
                         Row = isWhite ? 0 : 7,
                         Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
                         WasCaptured = false,
                         Match = match,
+                        InitialBoardSide = side,
                     }
                 );
             }
@@ -57,15 +62,17 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
         {
             bool isWhite = i < 2;
             bool isEven = i % 2 == 0;
+            int column = isEven ? 3 : 4;
 
             Piece piece = new()
             {
                 Value = isEven ? PieceEnum.QUEEN : PieceEnum.KING,
                 Color = isWhite ? PieceColorEnum.WHITE : PieceColorEnum.BLACK,
-                Column = isEven ? 3 : 4,
+                Column = column,
                 Row = isWhite ? 0 : 7,
                 WasCaptured = false,
                 Match = match,
+                InitialBoardSide = isEven ? BoardSideEnum.QUEEN : BoardSideEnum.KING,
             };
 
             pieces.Add(piece);

@@ -7,6 +7,20 @@ namespace ChessAPI.Repositories;
 public class MatchPieceHistoryRepository(AppDbContext context)
     : BaseRepository<MatchPieceHistory>(context)
 {
+    public Task<List<MatchPieceHistory>> GetMatchHistory(
+        int matchId,
+        AppDbContext? currentDbContext
+    )
+    {
+        var query = GetQueryBuilder(currentDbContext ?? Context);
+
+        return query
+            .Include(_ => _.Piece)
+            .Where(_ => _.Match.Id == matchId)
+            .OrderByDescending((_) => _.CreatedAt)
+            .ToListAsync();
+    }
+
     public Task<MatchPieceHistory?> GetMatchLastPieceHistory(
         int matchId,
         AppDbContext? currentDbContext
@@ -14,7 +28,7 @@ public class MatchPieceHistoryRepository(AppDbContext context)
     {
         var query = GetQueryBuilder(currentDbContext ?? Context);
 
-        return QueryBuilder
+        return query
             .Include(_ => _.Piece)
             .Where((_) => _.Match.Id == matchId)
             .OrderByDescending((_) => _.CreatedAt)

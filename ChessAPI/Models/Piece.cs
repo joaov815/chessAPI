@@ -6,6 +6,8 @@ namespace ChessAPI.Models;
 public class Piece
 {
     public int Id { get; set; }
+    public int MatchId { get; set; }
+    public required BoardSideEnum InitialBoardSide { get; set; }
     public required Match Match { get; set; }
     public required PieceColorEnum Color { get; set; }
     public required PieceEnum Value { get; set; }
@@ -31,10 +33,5 @@ public class Piece
     public bool IsOponents(Piece piece)
     {
         return Color != piece.Color;
-    }
-
-    public void Promote(PieceEnum value)
-    {
-        // TODO: //
     }
 }

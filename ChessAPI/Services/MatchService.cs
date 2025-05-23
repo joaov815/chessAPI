@@ -210,6 +210,8 @@ public class MatchService(
 
         List<WsClient> clients = manager.GetMatchClients(match.Id);
 
+        // TODO: Fix start match player 2 wrong color bug
+
         await Task.WhenAll(
             clients.Select(c =>
                 SocketUtils.SendMessage(
@@ -253,15 +255,83 @@ public class MatchService(
     )
     {
         var king = await kingStateRepository.GetByPieceId(pieceId, currentContext);
+        var isWhite = king.Piece.Color == PieceColorEnum.WHITE;
 
-        // TODO: Add Castle move
-
-        return
+        List<string> availablePositions =
         [
-            .. king.NonEnemyPositions.Where(position =>
-                !piecesPerPosition.TryGetValue(position, out _)
-            ),
+            .. king.PositionsAround.Where(position =>
+            {
+                bool hasOpponentInfluence = king.OpponentPositionsAround.Contains(position); // Não permite casas controladas por peças adversárias
+                bool hasPieceAt = piecesPerPosition.TryGetValue(position, out _); // Não permite casas que possuam peças
+
+                return !hasOpponentInfluence && !hasPieceAt;
+            }),
         ];
+
+        List<string> kingCastlingPositions = [];
+        List<string> queenCastlingPositions = [];
+
+        for (int i = 1; i <= 2; i++)
+        {
+            var pos = $"{king.Piece.Row}{king.Piece.Column + (isWhite ? i : i)}";
+
+            if (!piecesPerPosition.TryGetValue(pos, out Piece? _))
+            {
+                kingCastlingPositions.Add(pos);
+            }
+        }
+        for (int i = 1; i <= 3; i++)
+        {
+            var pos = $"{king.Piece.Row}{king.Piece.Column + (isWhite ? -i : -i)}";
+
+            if (!piecesPerPosition.TryGetValue(pos, out Piece? _))
+            {
+                queenCastlingPositions.Add(pos);
+            }
+        }
+
+        bool canKingCastle = kingCastlingPositions.Count == 2;
+        bool canQueenCastle = queenCastlingPositions.Count == 3;
+
+        if (canKingCastle || canQueenCastle)
+        {
+            var history = await matchPieceHistoryRepository.GetMatchHistory(
+                king.Piece.MatchId,
+                currentContext
+            );
+
+            // Caso tenha mexido no rei
+            if (history.Any(_ => _.Piece.Id == pieceId))
+            {
+                return availablePositions;
+            }
+
+            canKingCastle =
+                canKingCastle
+                && !history.Any(_ =>
+                    _.Piece.Color == king.Piece.Color
+                    && _.Piece.Value == PieceEnum.ROOK
+                    && _.Piece.InitialBoardSide == BoardSideEnum.KING
+                );
+            canQueenCastle =
+                canQueenCastle
+                && !history.Any(_ =>
+                    _.Piece.Color == king.Piece.Color
+                    && _.Piece.Value == PieceEnum.ROOK
+                    && _.Piece.InitialBoardSide == BoardSideEnum.QUEEN
+                );
+
+            if (canKingCastle)
+            {
+                availablePositions.AddRange(kingCastlingPositions);
+            }
+            if (canQueenCastle)
+            {
+                availablePositions.AddRange(queenCastlingPositions[..2]);
+            }
+        }
+
+        return availablePositions;
     }
 
     public async Task Move(
@@ -302,6 +372,12 @@ public class MatchService(
         );
 
         match.Rounds = round;
+
+        if (myPiece.Value == PieceEnum.KING)
+        {
+            KingState myKing = await kingStateRepository.GetByPieceId(myPiece.Id, context);
+            myKing.PositionsAround = PositionUtils.GetPositionsAround(myPiece);
+        }
 
         KingState opponentKing = await kingStateRepository.GetOpponentKing(
             match.Id,
