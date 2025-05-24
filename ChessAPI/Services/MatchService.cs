@@ -374,6 +374,8 @@ public class MatchService(
 
         match.Rounds = round;
 
+        WsMovePieceDto? castleRookMove = null;
+
         if (myPiece.Value == PieceEnum.KING)
         {
             int squaresMoved = dto.FromColumn - dto.ToColumn;
@@ -394,8 +396,18 @@ public class MatchService(
                         && _.Value.Value == PieceEnum.ROOK
                     )
                     .Value;
-                rook.Column = isKCastle ? 5 : 3;
 
+                int newColumn = isKCastle ? 5 : 3;
+
+                castleRookMove = new()
+                {
+                    FromColumn = rook.Column,
+                    FromRow = rook.Row,
+                    ToColumn = newColumn,
+                    ToRow = rook.Row,
+                };
+
+                rook.Column = newColumn;
                 context.Update(rook);
 
                 // TODO: Chamar List<string> newAvailablePositions = await GetAvailablePositions(
@@ -428,6 +440,7 @@ public class MatchService(
         {
             Type = WsMessageTypeResponseEnum.MOVE,
             History = history,
+            CastleRookMove = castleRookMove,
             CapturedEnPassantPawn = myPiece.EnPassantCapturePosition,
         };
 
