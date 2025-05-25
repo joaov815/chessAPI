@@ -376,6 +376,18 @@ public class MatchService(
 
         WsMovePieceDto? castleRookMove = null;
 
+        KingState opponentKing = await kingStateRepository.GetOpponentKing(
+            match.Id,
+            myPiece.Color,
+            context
+        );
+        List<string> newAvailablePositions = await GetAvailablePositions(
+            myPiece,
+            piecesPerPosition,
+            history,
+            context
+        );
+
         if (myPiece.Value == PieceEnum.KING)
         {
             int squaresMoved = dto.FromColumn - dto.ToColumn;
@@ -410,24 +422,14 @@ public class MatchService(
                 rook.Column = newColumn;
                 context.Update(rook);
 
-                // TODO: Chamar List<string> newAvailablePositions = await GetAvailablePositions(
+                newAvailablePositions.AddRange(
+                    await GetAvailablePositions(rook, piecesPerPosition, null, context)
+                );
             }
 
             KingState myKing = await kingStateRepository.GetByPieceId(myPiece.Id, context);
             myKing.PositionsAround = PositionUtils.GetPositionsAround(myPiece);
         }
-
-        KingState opponentKing = await kingStateRepository.GetOpponentKing(
-            match.Id,
-            myPiece.Color,
-            context
-        );
-        List<string> newAvailablePositions = await GetAvailablePositions(
-            myPiece,
-            piecesPerPosition,
-            history,
-            context
-        );
 
         opponentKing.OpponentPositionsAround =
         [
