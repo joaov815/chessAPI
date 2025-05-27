@@ -14,6 +14,7 @@ public class Piece
     public required int Column { get; set; }
     public required int Row { get; set; }
     public required bool WasCaptured { get; set; } = false;
+    public required bool IsPinned { get; set; } = false;
 
     [NotMapped]
     public string? EnPassantCapturePosition { get; set; }

@@ -28,6 +28,7 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
                     WasCaptured = false,
                     Match = match,
                     InitialBoardSide = side,
+                    IsPinned = false,
                 }
             );
         }
@@ -52,6 +53,7 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
                         WasCaptured = false,
                         Match = match,
                         InitialBoardSide = side,
+                        IsPinned = false,
                     }
                 );
             }
@@ -73,6 +75,7 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
                 WasCaptured = false,
                 Match = match,
                 InitialBoardSide = isEven ? BoardSideEnum.QUEEN : BoardSideEnum.KING,
+                IsPinned = false,
             };
 
             pieces.Add(piece);

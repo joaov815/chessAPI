@@ -1,5 +1,6 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
+using ChessAPI.Enums;
 
 namespace ChessAPI.Models;
 
@@ -15,6 +16,7 @@ public class MatchPieceHistory
     public required int CurrentColumn { get; set; }
     public required int PreviousRow { get; set; }
     public required int PreviousColumn { get; set; }
+    public PieceColorEnum? ColorOnCheck { get; set; }
 
     [NotMapped]
     public string CurrentPosition

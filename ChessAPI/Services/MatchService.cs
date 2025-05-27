@@ -301,26 +301,21 @@ public class MatchService(
                 currentContext
             );
 
-            // Caso tenha mexido no rei
             if (history.Any(_ => _.Piece.Id == pieceId))
             {
                 return availablePositions;
             }
 
-            canKingCastle =
-                canKingCastle
-                && !history.Any(_ =>
-                    _.Piece.Color == king.Piece.Color
-                    && _.Piece.Value == PieceEnum.ROOK
-                    && _.Piece.InitialBoardSide == BoardSideEnum.KING
-                );
-            canQueenCastle =
-                canQueenCastle
-                && !history.Any(_ =>
-                    _.Piece.Color == king.Piece.Color
-                    && _.Piece.Value == PieceEnum.ROOK
-                    && _.Piece.InitialBoardSide == BoardSideEnum.QUEEN
-                );
+            canKingCastle &= !history.Any(_ =>
+                _.Piece.Color == king.Piece.Color
+                && _.Piece.Value == PieceEnum.ROOK
+                && _.Piece.InitialBoardSide == BoardSideEnum.KING
+            );
+            canQueenCastle &= !history.Any(_ =>
+                _.Piece.Color == king.Piece.Color
+                && _.Piece.Value == PieceEnum.ROOK
+                && _.Piece.InitialBoardSide == BoardSideEnum.QUEEN
+            );
 
             if (canKingCastle)
             {
@@ -335,6 +330,70 @@ public class MatchService(
         return availablePositions;
     }
 
+    private static void Capture(
+        Piece myPiece,
+        WsMovePieceDto dto,
+        Dictionary<string, Piece> piecesPerPosition
+    )
+    {
+        string possibleCapturePosition = myPiece.EnPassantCapturePosition ?? dto.ToPosition;
+
+        piecesPerPosition.TryGetValue(possibleCapturePosition, out Piece? pieceAtTarget);
+
+        if (pieceAtTarget != null)
+        {
+            pieceAtTarget.WasCaptured = true;
+        }
+    }
+
+    private async Task<WsMovePieceDto?> Castle(
+        Piece myPiece,
+        WsMovePieceDto dto,
+        Dictionary<string, Piece> piecesPerPosition,
+        AppDbContext context,
+        List<string> newAvailablePositions
+    )
+    {
+        WsMovePieceDto? castleRookMove = null;
+        int squaresMoved = dto.FromColumn - dto.ToColumn;
+        bool isCastleMove = Math.Abs(squaresMoved) == 2;
+
+        if (isCastleMove)
+        {
+            bool isKCastle = squaresMoved < 0;
+
+            Piece rook = piecesPerPosition
+                .FirstOrDefault(_ =>
+                    _.Value.Color == myPiece.Color
+                    && (
+                        isKCastle
+                            ? _.Value.InitialBoardSide == BoardSideEnum.KING
+                            : _.Value.InitialBoardSide == BoardSideEnum.QUEEN
+                    )
+                    && _.Value.Value == PieceEnum.ROOK
+                )
+                .Value;
+
+            int newColumn = isKCastle ? 5 : 3;
+
+            castleRookMove = new()
+            {
+                FromColumn = rook.Column,
+                FromRow = rook.Row,
+                ToColumn = newColumn,
+                ToRow = rook.Row,
+            };
+
+            rook.Column = newColumn;
+            context.Update(rook);
+
+            newAvailablePositions.AddRange(
+                await GetAvailablePositions(rook, piecesPerPosition, null, context)
+            );
+        }
+        return castleRookMove;
+    }
+
     public async Task Move(
         Match match,
         Piece myPiece,
@@ -346,18 +405,12 @@ public class MatchService(
         myPiece.Column = dto.ToColumn;
         myPiece.Row = dto.ToRow;
 
-        string possibleCapturePosition = myPiece.EnPassantCapturePosition ?? dto.ToPosition;
-
-        piecesPerPosition.TryGetValue(possibleCapturePosition, out Piece? pieceAtTarget);
-
-        if (pieceAtTarget != null)
-        {
-            pieceAtTarget.WasCaptured = true;
-        }
+        Capture(myPiece, dto, piecesPerPosition);
 
         ushort round = (ushort)(myPiece.IsWhite ? match.Rounds + 1 : match.Rounds);
+        match.Rounds = round;
 
-        var history = matchPieceHistoryRepository.Save(
+        MatchPieceHistory history = matchPieceHistoryRepository.Save(
             new()
             {
                 Piece = myPiece,
@@ -372,9 +425,12 @@ public class MatchService(
             context
         );
 
-        match.Rounds = round;
-
-        WsMovePieceDto? castleRookMove = null;
+        MoveResponseDto response = new()
+        {
+            Type = WsMessageTypeResponseEnum.MOVE,
+            History = history,
+            CapturedEnPassantPawn = myPiece.EnPassantCapturePosition,
+        };
 
         KingState opponentKing = await kingStateRepository.GetOpponentKing(
             match.Id,
@@ -390,42 +446,13 @@ public class MatchService(
 
         if (myPiece.Value == PieceEnum.KING)
         {
-            int squaresMoved = dto.FromColumn - dto.ToColumn;
-            bool isCastleMove = Math.Abs(squaresMoved) == 2;
-
-            if (isCastleMove)
-            {
-                bool isKCastle = squaresMoved < 0;
-
-                Piece rook = piecesPerPosition
-                    .FirstOrDefault(_ =>
-                        _.Value.Color == myPiece.Color
-                        && (
-                            isKCastle
-                                ? _.Value.InitialBoardSide == BoardSideEnum.KING
-                                : _.Value.InitialBoardSide == BoardSideEnum.QUEEN
-                        )
-                        && _.Value.Value == PieceEnum.ROOK
-                    )
-                    .Value;
-
-                int newColumn = isKCastle ? 5 : 3;
-
-                castleRookMove = new()
-                {
-                    FromColumn = rook.Column,
-                    FromRow = rook.Row,
-                    ToColumn = newColumn,
-                    ToRow = rook.Row,
-                };
-
-                rook.Column = newColumn;
-                context.Update(rook);
-
-                newAvailablePositions.AddRange(
-                    await GetAvailablePositions(rook, piecesPerPosition, null, context)
-                );
-            }
+            response.CastleRookMove = await Castle(
+                myPiece,
+                dto,
+                piecesPerPosition,
+                context,
+                newAvailablePositions
+            );
 
             KingState myKing = await kingStateRepository.GetByPieceId(myPiece.Id, context);
             myKing.PositionsAround = PositionUtils.GetPositionsAround(myPiece);
@@ -436,16 +463,22 @@ public class MatchService(
             .. newAvailablePositions.Where(opponentKing.PositionsAround.Contains),
         ];
 
-        await context.SaveChangesAsync();
-
-        MoveResponseDto response = new()
+        // Verifica pecas cravadas
+        foreach (var pos in opponentKing.OpponentPositionsAround)
         {
-            Type = WsMessageTypeResponseEnum.MOVE,
-            History = history,
-            CastleRookMove = castleRookMove,
-            CapturedEnPassantPawn = myPiece.EnPassantCapturePosition,
-        };
+            if (piecesPerPosition.TryGetValue(pos, out Piece? _piece))
+            {
+                _piece.IsPinned = true;
+            }
+        }
 
+        // Checa Check
+        if (newAvailablePositions.Contains(opponentKing.Piece.Position))
+        {
+            history.ColorOnCheck = opponentKing.Piece.Color;
+        }
+
+        await context.SaveChangesAsync();
         await manager.SendMatchClients(match.Id, response);
     }
 
