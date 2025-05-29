@@ -14,7 +14,8 @@ public class Piece
     public required int Column { get; set; }
     public required int Row { get; set; }
     public required bool WasCaptured { get; set; } = false;
-    public required bool IsPinned { get; set; } = false;
+    public Piece? PinnedBy { get; set; }
+    public Piece? pinnedBy;
 
     [NotMapped]
     public string? EnPassantCapturePosition { get; set; }
@@ -34,5 +35,21 @@ public class Piece
     public bool IsOponents(Piece piece)
     {
         return Color != piece.Color;
+    }
+
+    public void UpdatePosition(int row, int column)
+    {
+        Row = row;
+        Column = column;
+    }
+
+    public void SetPinned(Piece piece)
+    {
+        pinnedBy = piece;
+    }
+
+    public void UpdatePinned()
+    {
+        PinnedBy = pinnedBy;
     }
 }

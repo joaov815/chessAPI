@@ -28,7 +28,6 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
                     WasCaptured = false,
                     Match = match,
                     InitialBoardSide = side,
-                    IsPinned = false,
                 }
             );
         }
@@ -53,7 +52,6 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
                         WasCaptured = false,
                         Match = match,
                         InitialBoardSide = side,
-                        IsPinned = false,
                     }
                 );
             }
@@ -75,7 +73,6 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
                 WasCaptured = false,
                 Match = match,
                 InitialBoardSide = isEven ? BoardSideEnum.QUEEN : BoardSideEnum.KING,
-                IsPinned = false,
             };
 
             pieces.Add(piece);
@@ -116,7 +113,10 @@ public class PieceRepository(AppDbContext context, KingStateRepository kingState
     {
         var query = GetQueryBuilder(currentContext ?? Context);
 
-        return await query.Where(_ => _.Match.Id == matchId && !_.WasCaptured).ToListAsync();
+        return await query
+            .Include(_ => _.PinnedBy)
+            .Where(_ => _.Match.Id == matchId && !_.WasCaptured)
+            .ToListAsync();
     }
 
     public async Task<Dictionary<string, Piece>> GetMatchActivePiecesPerPosition(

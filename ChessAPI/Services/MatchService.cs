@@ -402,8 +402,7 @@ public class MatchService(
         AppDbContext context
     )
     {
-        myPiece.Column = dto.ToColumn;
-        myPiece.Row = dto.ToRow;
+        myPiece.UpdatePosition(dto.ToRow, dto.ToColumn);
 
         Capture(myPiece, dto, piecesPerPosition);
 
@@ -463,14 +462,12 @@ public class MatchService(
             .. newAvailablePositions.Where(opponentKing.PositionsAround.Contains),
         ];
 
-        // Verifica pecas cravadas
-        foreach (var pos in opponentKing.OpponentPositionsAround)
+        if (myPiece.pinnedBy != null)
         {
-            if (piecesPerPosition.TryGetValue(pos, out Piece? _piece))
-            {
-                _piece.IsPinned = true;
-            }
+            myPiece.UpdatePinned();
         }
+
+        // TODO: despinar pecas
 
         // Checa Check
         if (newAvailablePositions.Contains(opponentKing.Piece.Position))
@@ -618,6 +615,11 @@ public class MatchService(
             [0, 1],
         ];
 
+        if (myPiece.PinnedBy != null && myPiece.Value == PieceEnum.QUEEN)
+        {
+            //
+        }
+
         Dictionary<PieceEnum, int[][]> directionsPerPiece = new()
         {
             { PieceEnum.BISHOP, bishopDirections },
@@ -649,6 +651,17 @@ public class MatchService(
 
                 r += directions[i][0];
                 c += directions[i][1];
+            }
+
+            string lastPosition = $"{r}{c}";
+            string nextPosition = $"{r + directions[i][0]}{c += directions[i][1]}";
+
+            if (
+                piecesPerPosition.TryGetValue(nextPosition, out Piece? nextPiece)
+                && nextPiece.Value == PieceEnum.KING
+            )
+            {
+                myPiece.SetPinned(piecesPerPosition[lastPosition]);
             }
         }
 
